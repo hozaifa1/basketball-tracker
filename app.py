@@ -182,6 +182,13 @@ def inject_global_css() -> None:
         font-size: 0.95rem;
         color: #9ca3af;
     }
+    [data-testid="stTable"] table th,
+    [data-testid="stTable"] table td,
+    [data-testid="stDataFrame"] table th,
+    [data-testid="stDataFrame"] table td {
+        text-align: center !important;
+    }
+
     </style>
     """
     st.markdown(css, unsafe_allow_html=True)
