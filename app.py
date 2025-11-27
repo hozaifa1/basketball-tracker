@@ -81,6 +81,39 @@ def inject_global_css() -> None:
         color: #e5e7eb;
         text-shadow: 0 10px 30px rgba(0,0,0,0.75);
     }
+    .bb-rules-card {
+        margin: 0.25rem 0 1rem 0;
+        padding: 1rem 1.25rem;
+        border-radius: 0.75rem;
+        border: 1px solid #1f2937;
+        background: rgba(15,23,42,0.92);
+    }
+    .bb-rules-heading {
+        font-size: 0.95rem;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        color: #f97316;
+        font-weight: 700;
+        margin-bottom: 0.25rem;
+    }
+    .bb-rules-note {
+        font-size: 0.85rem;
+        color: #9ca3af;
+        margin-bottom: 0.35rem;
+    }
+    .bb-rules-list {
+        margin: 0;
+        padding-left: 1.25rem;
+        font-size: 0.9rem;
+        color: #e5e7eb;
+    }
+    .bb-rules-list li {
+        margin-bottom: 0.25rem;
+    }
+    .bb-rule-name {
+        color: #f97316;
+        font-weight: 600;
+    }
     [data-testid="stSidebar"] {
         background: #020617;
         border-right: 1px solid #111827;
@@ -976,6 +1009,22 @@ def main() -> None:
 
     with tab_balances:
         st.subheader("Balances & Costs")
+        st.markdown(
+            """
+            <div class="bb-rules-card">
+                <div class="bb-rules-heading">Fine Rules</div>
+                <div class="bb-rules-note">Balances are fully recomputed from attendance logs using these rules:</div>
+                <ol class="bb-rules-list">
+                    <li><span class="bb-rule-name">Team Perfect</span> – If everyone is <em>On Time</em> or <em>Absent-Informed</em>, every leader gets <strong>+20</strong> to total balance and their Akib balance <strong>−20</strong>.</li>
+                    <li><span class="bb-rule-name">Leader Late</span> – For each leader marked <em>Late</em>, that leader gets <strong>−40</strong> to total balance and Akib balance <strong>+40</strong>.</li>
+                    <li><span class="bb-rule-name">Group Suicide</span> – For each group, let <em>N</em> be the number of players marked <em>Late</em>: each leader in that group gets <strong>+10 × N</strong>, and every late player gets <strong>−10</strong>.</li>
+                    <li><span class="bb-rule-name">One Absent-Uninformed</span> – If exactly one player in the team is <em>Absent-Uninformed</em> and everyone else is On Time / Absent-Informed, that player’s group leader gets <strong>−10</strong> total balance and Akib balance <strong>+10</strong>.</li>
+                    <li><span class="bb-rule-name">Absent-Informed</span> – Has no direct penalty, it only affects whether the other rules trigger.</li>
+                </ol>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         if st.button("Recompute balances from attendance", key="recompute_balances_btn"):
             ok = recompute_all_balances(supabase)
             if ok:
