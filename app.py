@@ -57,6 +57,58 @@ def inject_global_css() -> None:
         font-weight: 600;
         color: #f97316;
     }
+    .bb-login-card {
+        margin-top: 4rem;
+        padding: 2rem 2.25rem 1.75rem 2.25rem;
+        border-radius: 1rem;
+        border: 1px solid #1f2937;
+        background: radial-gradient(circle at 0 0, #111827 0, #020617 55%);
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+    }
+    .bb-login-hero {
+        text-align: center;
+    }
+    .bb-login-ball {
+        width: 72px;
+        height: 72px;
+        margin: 0 auto 1rem auto;
+        border-radius: 9999px;
+        border: 3px solid #f97316;
+        background: radial-gradient(circle at 30% 30%, #fed7aa, #f97316);
+        box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.3), 0 18px 30px rgba(0, 0, 0, 0.65);
+        position: relative;
+        overflow: hidden;
+    }
+    .bb-login-ball::before,
+    .bb-login-ball::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        border: 2px solid rgba(15,23,42,0.8);
+    }
+    .bb-login-ball::before {
+        border-top: none;
+        border-bottom: none;
+        transform: rotate(18deg);
+    }
+    .bb-login-ball::after {
+        border-left: none;
+        border-right: none;
+        transform: rotate(-18deg);
+    }
+    .bb-login-title {
+        font-size: 1.4rem;
+        font-weight: 800;
+        color: #f97316;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin-bottom: 0.35rem;
+    }
+    .bb-login-subtitle {
+        font-size: 0.95rem;
+        color: #9ca3af;
+    }
     </style>
     """
     st.markdown(css, unsafe_allow_html=True)
@@ -66,8 +118,28 @@ def load_user_store() -> Dict[str, Dict[str, str]]:
     try:
         raw_users = st.secrets["users"]
     except Exception:
-        st.error("User credentials configuration is missing in st.secrets['users'].")
-        st.stop()
+        raw_users = None
+
+    def get_secret_value(key: str, default: str) -> str:
+        getter = getattr(st.secrets, "get", None)
+        if callable(getter):
+            try:
+                value = getter(key, default)
+            except Exception:
+                value = default
+        else:
+            value = default
+        return str(value)
+
+    # If there is no explicit users config, fall back to a single admin account.
+    if raw_users is None:
+        default_password = get_secret_value("ADMIN_PASSWORD", "admin")
+        return {
+            "admin": {
+                "password": default_password,
+                "role": USER_ROLE_ADMIN,
+            }
+        }
 
     parsed: Dict[str, Dict[str, str]] = {}
     if hasattr(raw_users, "items"):
@@ -84,48 +156,72 @@ def load_user_store() -> Dict[str, Dict[str, str]]:
             continue
         if role not in {USER_ROLE_ADMIN, USER_ROLE_VIEWER}:
             role = USER_ROLE_VIEWER
-        parsed[str(username)] = {
+        key = str(username).strip().lower()
+        parsed[key] = {
             "password": str(password),
             "role": role,
         }
 
+    # If users table exists but nothing parsed correctly, still provide a default admin.
     if not parsed:
-        st.error("No valid user entries found under st.secrets['users'].")
-        st.stop()
+        default_password = get_secret_value("ADMIN_PASSWORD", "admin")
+        return {
+            "admin": {
+                "password": default_password,
+                "role": USER_ROLE_ADMIN,
+            }
+        }
 
     return parsed
 
 
 def require_user_login(user_store: Dict[str, Dict[str, str]]) -> Dict[str, str]:
-    st.sidebar.subheader("User Access")
     existing = st.session_state.get("auth_user")
     if existing and existing.get("username") in user_store:
-        username = existing["username"]
-        role = user_store[username]["role"]
-        st.session_state["auth_user"] = {"username": username, "role": role}
-        st.sidebar.success(f"Signed in as {username} ({role.title()})")
+        username_key = existing["username"]
+        role = user_store[username_key]["role"]
+        st.session_state["auth_user"] = {"username": username_key, "role": role}
+        st.sidebar.subheader("User")
+        st.sidebar.success(f"Signed in as {username_key} ({role.title()})")
         if st.sidebar.button("Log out"):
             st.session_state.pop("auth_user", None)
             st.rerun()
         return st.session_state["auth_user"]
 
-    with st.sidebar.form("login_form"):
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Log in")
-        if submitted:
-            user_record = user_store.get(username)
-            if user_record and password == user_record.get("password"):
-                st.session_state["auth_user"] = {
-                    "username": username,
-                    "role": user_record.get("role", USER_ROLE_VIEWER),
-                }
-                st.success("Login successful. Reloading...")
-                st.rerun()
-            else:
-                st.error("Invalid username or password.")
+    col_left, col_center, col_right = st.columns([1, 2, 1])
+    with col_center:
+        st.markdown(
+            """
+            <div class="bb-login-card">
+                <div class="bb-login-hero">
+                    <div class="bb-login-ball"></div>
+                    <div class="bb-login-title">Courtside Login</div>
+                    <div class="bb-login-subtitle">
+                        Sign in to track attendance, fines, and logs for your squad.
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    st.info("Please sign in to access the tracker.")
+        with st.form("login_form"):
+            raw_username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            submitted = st.form_submit_button("Log in")
+            if submitted:
+                username_key = raw_username.strip().lower()
+                user_record = user_store.get(username_key)
+                if user_record and password == user_record.get("password"):
+                    st.session_state["auth_user"] = {
+                        "username": username_key,
+                        "role": user_record.get("role", USER_ROLE_VIEWER),
+                    }
+                    st.success("Login successful. Reloading...")
+                    st.rerun()
+                else:
+                    st.error("Invalid username or password.")
+
     st.stop()
 
 
