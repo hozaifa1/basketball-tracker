@@ -41,6 +41,46 @@ def inject_global_css() -> None:
         font-size: 0.95rem;
         color: #9ca3af;
     }
+    .bb-cover {
+        margin: -1rem -1rem 1.5rem -1rem;
+        height: 220px;
+        border-radius: 0 0 1.5rem 1.5rem;
+        background-image:
+            linear-gradient(135deg, rgba(15,23,42,0.8), rgba(15,23,42,0.2)),
+            url("https://images.unsplash.com/photo-1519861531473-9200262188bf?auto=format&fit=crop&w=1400&q=80");
+        background-size: cover;
+        background-position: center;
+        position: relative;
+        overflow: hidden;
+        border-bottom: 1px solid #111827;
+    }
+    .bb-cover-inner {
+        position: absolute;
+        left: 3rem;
+        bottom: 1.75rem;
+        max-width: 480px;
+    }
+    .bb-cover-kicker {
+        font-size: 0.8rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: #fde68a;
+        margin-bottom: 0.2rem;
+    }
+    .bb-cover-title {
+        font-size: 2.1rem;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #fef3c7;
+        text-shadow: 0 14px 40px rgba(0,0,0,0.8);
+        margin-bottom: 0.25rem;
+    }
+    .bb-cover-subtitle {
+        font-size: 0.98rem;
+        color: #e5e7eb;
+        text-shadow: 0 10px 30px rgba(0,0,0,0.75);
+    }
     [data-testid="stSidebar"] {
         background: #020617;
         border-right: 1px solid #111827;
@@ -901,6 +941,18 @@ def main() -> None:
     inject_global_css()
     st.markdown(
         """
+        <div class="bb-cover">
+            <div class="bb-cover-inner">
+                <div class="bb-cover-kicker">DU EEE</div>
+                <div class="bb-cover-title">DU EEE Basketball Team</div>
+                <div class="bb-cover-subtitle">Budget &amp; Attendance Tracker</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        """
         <div class="bb-header">
             <div class="bb-header-title">Basketball Budget Tracker</div>
             <div class="bb-header-subtitle">
@@ -967,15 +1019,26 @@ def main() -> None:
                     if not group_players:
                         continue
 
-                    group_label = str(g)
-                    if not group_label.lower().startswith("group"):
-                        display_group_label = f"Group {group_label}"
-                    else:
-                        display_group_label = group_label
+                    group_label_raw = str(g)
+                    num_part = (
+                        group_label_raw.replace("Group", "").replace("group", "").strip()
+                    )
+                    if not num_part:
+                        num_part = group_label_raw.strip()
 
-                    group_expander = st.expander(display_group_label, expanded=True)
+                    player_names = [p.get("name") for p in group_players if p.get("name")]
+                    names_str = ", ".join(player_names)
+
+                    base_label = f"Group -{num_part}"
+                    if names_str:
+                        display_group_label = f"{base_label} ( {names_str} )"
+                    else:
+                        display_group_label = base_label
+
+                    group_expander = st.expander(display_group_label, expanded=False)
                     with group_expander:
                         columns = st.columns(2)
+                        attendance_options = ["Select attendance"] + STATUS_OPTIONS
                         for idx, p in enumerate(group_players):
                             name = p.get("name")
                             if not name:
@@ -990,7 +1053,7 @@ def main() -> None:
                             with target_col:
                                 selected_status = st.selectbox(
                                     label,
-                                    STATUS_OPTIONS,
+                                    attendance_options,
                                     index=0,
                                     key=widget_key,
                                 )
@@ -1001,6 +1064,10 @@ def main() -> None:
             if submitted:
                 if not status_by_player:
                     st.warning("No attendance data to submit.")
+                elif any(
+                    status == "Select attendance" for status in status_by_player.values()
+                ):
+                    st.warning("Please select attendance for all players before submitting.")
                 else:
                     insert_attendance_records(supabase, attendance_date, status_by_player)
                     ok = recompute_all_balances(supabase)
