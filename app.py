@@ -13,6 +13,9 @@ STATUS_OPTIONS = [
     "Absent-Uninformed",
 ]
 
+USER_ROLE_ADMIN = "admin"
+USER_ROLE_VIEWER = "viewer"
+
 
 def inject_global_css() -> None:
     css = """
@@ -57,6 +60,123 @@ def inject_global_css() -> None:
     </style>
     """
     st.markdown(css, unsafe_allow_html=True)
+
+
+def load_user_store() -> Dict[str, Dict[str, str]]:
+    try:
+        raw_users = st.secrets["users"]
+    except Exception:
+        st.error("User credentials configuration is missing in st.secrets['users'].")
+        st.stop()
+
+    parsed: Dict[str, Dict[str, str]] = {}
+    if hasattr(raw_users, "items"):
+        iterator = raw_users.items()
+    else:
+        iterator = []
+
+    for username, record in iterator:
+        if not isinstance(record, dict):
+            continue
+        password = record.get("password")
+        role = str(record.get("role", USER_ROLE_VIEWER)).lower()
+        if password is None:
+            continue
+        if role not in {USER_ROLE_ADMIN, USER_ROLE_VIEWER}:
+            role = USER_ROLE_VIEWER
+        parsed[str(username)] = {
+            "password": str(password),
+            "role": role,
+        }
+
+    if not parsed:
+        st.error("No valid user entries found under st.secrets['users'].")
+        st.stop()
+
+    return parsed
+
+
+def require_user_login(user_store: Dict[str, Dict[str, str]]) -> Dict[str, str]:
+    st.sidebar.subheader("User Access")
+    existing = st.session_state.get("auth_user")
+    if existing and existing.get("username") in user_store:
+        username = existing["username"]
+        role = user_store[username]["role"]
+        st.session_state["auth_user"] = {"username": username, "role": role}
+        st.sidebar.success(f"Signed in as {username} ({role.title()})")
+        if st.sidebar.button("Log out"):
+            st.session_state.pop("auth_user", None)
+            st.rerun()
+        return st.session_state["auth_user"]
+
+    with st.sidebar.form("login_form"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Log in")
+        if submitted:
+            user_record = user_store.get(username)
+            if user_record and password == user_record.get("password"):
+                st.session_state["auth_user"] = {
+                    "username": username,
+                    "role": user_record.get("role", USER_ROLE_VIEWER),
+                }
+                st.success("Login successful. Reloading...")
+                st.rerun()
+            else:
+                st.error("Invalid username or password.")
+
+    st.info("Please sign in to access the tracker.")
+    st.stop()
+
+
+def user_is_admin(user: Dict[str, str]) -> bool:
+    return user.get("role") == USER_ROLE_ADMIN
+
+
+def fetch_attendance_logs(client: Client, limit: int = 200) -> List[Dict[str, Any]]:
+    try:
+        response = (
+            client.table("attendance")
+            .select("id, date, player_name, status")
+            .order("date", desc=True)
+            .limit(limit)
+            .execute()
+        )
+    except Exception as exc:
+        st.error(f"Failed to load attendance logs: {exc}")
+        return []
+
+    data = getattr(response, "data", None)
+    error = getattr(response, "error", None)
+
+    if error:
+        st.error(f"Supabase error while loading attendance logs: {error}")
+        return []
+
+    if not isinstance(data, list):
+        st.error("Unexpected attendance logs response format from Supabase.")
+        return []
+
+    return data
+
+
+def delete_attendance_entry(client: Client, entry_id: Any) -> bool:
+    if entry_id is None:
+        st.error("Cannot delete log without an identifier.")
+        return False
+
+    try:
+        response = client.table("attendance").delete().eq("id", entry_id).execute()
+    except Exception as exc:
+        st.error(f"Failed to delete attendance entry: {exc}")
+        return False
+
+    error = getattr(response, "error", None)
+    if error:
+        st.error(f"Supabase error while deleting attendance entry: {error}")
+        return False
+
+    return True
 
 
 @st.cache_resource
@@ -332,6 +452,56 @@ def render_leaderboard(client: Client) -> None:
         st.dataframe(styled, use_container_width=True)
 
 
+def render_attendance_logs(client: Client, is_admin: bool) -> None:
+    st.subheader("Attendance Logs")
+    logs = fetch_attendance_logs(client)
+    if not logs:
+        st.info("No attendance records yet.")
+        return
+
+    df = pd.DataFrame(logs)
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+        df = df.sort_values("date", ascending=False)
+    df = df.reset_index(drop=True)
+
+    rename_map = {
+        "date": "Date",
+        "player_name": "Player",
+        "status": "Status",
+    }
+    df_display = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
+
+    st.dataframe(df_display, use_container_width=True)
+
+    if is_admin and "id" in df.columns and not df["id"].isnull().all():
+        st.markdown("### Admin Controls")
+        log_rows = df.to_dict(orient="records")
+        option_labels = [
+            f"{idx + 1}. {row.get('date', 'Unknown Date')} — {row.get('player_name', 'Unknown')} ({row.get('status', 'Unknown')})"
+            for idx, row in enumerate(log_rows)
+        ]
+        id_lookup = {
+            label: row.get("id")
+            for label, row in zip(option_labels, log_rows)
+            if row.get("id") is not None
+        }
+
+        if not id_lookup:
+            st.warning("No deletable entries found (missing IDs).")
+            return
+
+        with st.form("delete_attendance_entry_form"):
+            selected_label = st.selectbox("Select a log entry to delete", list(id_lookup.keys()))
+            confirm = st.form_submit_button("Delete Selected Entry")
+
+            if confirm:
+                success = delete_attendance_entry(client, id_lookup[selected_label])
+                if success:
+                    st.success("Attendance entry deleted.")
+                    st.rerun()
+
+
 def main() -> None:
     st.set_page_config(page_title="Basketball Budget Tracker", layout="wide")
 
@@ -348,7 +518,10 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
+    user_store = load_user_store()
+    auth_user = require_user_login(user_store)
     supabase = get_supabase_client()
+    is_admin = user_is_admin(auth_user)
 
     # Sidebar configuration info
     st.sidebar.header("Configuration")
@@ -420,6 +593,8 @@ def main() -> None:
     with leaderboard_col:
         st.subheader("Leaderboard")
         render_leaderboard(supabase)
+
+    render_attendance_logs(supabase, is_admin)
 
 
 if __name__ == "__main__":
