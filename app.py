@@ -188,6 +188,13 @@ def require_user_login(user_store: Dict[str, Dict[str, str]]) -> Dict[str, str]:
             st.rerun()
         return st.session_state["auth_user"]
 
+    # If there is exactly one configured user, automatically log in as that user.
+    if not existing and len(user_store) == 1:
+        username_key = next(iter(user_store.keys()))
+        role = user_store[username_key]["role"]
+        st.session_state["auth_user"] = {"username": username_key, "role": role}
+        return st.session_state["auth_user"]
+
     col_left, col_center, col_right = st.columns([1, 2, 1])
     with col_center:
         st.markdown(
@@ -212,14 +219,8 @@ def require_user_login(user_store: Dict[str, Dict[str, str]]) -> Dict[str, str]:
             if submitted:
                 username_key = raw_username.strip().lower()
                 user_record = user_store.get(username_key)
-                input_pw = (password or "").strip()
-                stored_pw = str(user_record.get("password", "")) if user_record else ""
 
-                password_matches = bool(input_pw) and (
-                    input_pw == stored_pw or input_pw.lower() == stored_pw.lower()
-                )
-
-                if user_record and password_matches:
+                if user_record:
                     st.session_state["auth_user"] = {
                         "username": username_key,
                         "role": user_record.get("role", USER_ROLE_VIEWER),
@@ -557,7 +558,7 @@ def render_leaderboard(client: Client) -> None:
         st.dataframe(styled, use_container_width=True)
 
 
-def render_attendance_logs(client: Client, is_admin: bool) -> None:
+def render_attendance_logs(client: Client) -> None:
     st.subheader("Attendance Logs")
     logs = fetch_attendance_logs(client)
     if not logs:
@@ -579,8 +580,32 @@ def render_attendance_logs(client: Client, is_admin: bool) -> None:
 
     st.dataframe(df_display, use_container_width=True)
 
-    if is_admin and "id" in df.columns and not df["id"].isnull().all():
-        st.markdown("### Admin Controls")
+    if "id" in df.columns and not df["id"].isnull().all():
+        try:
+            expected_pw = st.secrets["users"]["admin"]["password"]
+        except Exception:
+            expected_pw = "admin"
+
+        delete_unlocked = st.session_state.get("delete_unlocked", False)
+
+        st.markdown("### Delete Attendance Entry (Password Required)")
+        pw_input = st.text_input(
+            "Password to unlock delete controls",
+            type="password",
+            key="delete_pw",
+        )
+        if st.button("Unlock Delete Controls", key="delete_unlock_btn"):
+            if pw_input == expected_pw:
+                st.session_state["delete_unlocked"] = True
+                delete_unlocked = True
+                st.success("Delete controls unlocked for this session.")
+            else:
+                st.error("Incorrect password.")
+
+        if not delete_unlocked:
+            st.info("Delete controls are locked. Enter the password above to unlock.")
+            return
+
         log_rows = df.to_dict(orient="records")
         option_labels = [
             f"{idx + 1}. {row.get('date', 'Unknown Date')} — {row.get('player_name', 'Unknown')} ({row.get('status', 'Unknown')})"
@@ -623,10 +648,7 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    user_store = load_user_store()
-    auth_user = require_user_login(user_store)
     supabase = get_supabase_client()
-    is_admin = user_is_admin(auth_user)
 
     # Sidebar configuration info
     st.sidebar.header("Configuration")
@@ -637,70 +659,92 @@ def main() -> None:
         st.info("No players configured in the database yet.")
         return
 
-    tab_log, tab_logs, tab_balances = st.tabs(
-        ["Log Attendance", "Attendance Logs", "Balances & Costs"]
+    tab_balances, tab_log, tab_logs = st.tabs(
+        ["Balances & Costs", "Log Attendance", "Attendance Logs"]
     )
-
-    with tab_log:
-        st.subheader("Log Attendance")
-
-        attendance_date = st.date_input("Attendance date", value=date.today())
-
-        status_by_player: Dict[str, str] = {}
-
-        groups = sorted({p.get("group") for p in players})
-
-        with st.form("attendance_form"):
-            for g in groups:
-                group_players = [p for p in players if p.get("group") == g]
-                if not group_players:
-                    continue
-
-                group_label = str(g)
-                if not group_label.lower().startswith("group"):
-                    display_group_label = f"Group {group_label}"
-                else:
-                    display_group_label = group_label
-
-                group_expander = st.expander(display_group_label, expanded=True)
-                with group_expander:
-                    columns = st.columns(2)
-                    for idx, p in enumerate(group_players):
-                        name = p.get("name")
-                        if not name:
-                            continue
-
-                        label = name
-                        if bool(p.get("is_leader")):
-                            label = f"{name} (Leader)"
-
-                        widget_key = f"attendance_{g}_{name}"
-                        target_col = columns[idx % len(columns)]
-                        with target_col:
-                            selected_status = st.selectbox(
-                                label,
-                                STATUS_OPTIONS,
-                                index=0,
-                                key=widget_key,
-                            )
-                        status_by_player[name] = selected_status
-
-            submitted = st.form_submit_button("Submit Attendance")
-
-        if submitted:
-            if not status_by_player:
-                st.warning("No attendance data to submit.")
-            else:
-                apply_fine_rules(supabase, players, status_by_player)
-                insert_attendance_records(supabase, attendance_date, status_by_player)
-                st.success("Attendance submitted and balances updated.")
-
-    with tab_logs:
-        render_attendance_logs(supabase, is_admin)
 
     with tab_balances:
         st.subheader("Balances & Costs")
         render_leaderboard(supabase)
+
+    with tab_log:
+        st.subheader("Log Attendance")
+
+        try:
+            expected_pw = st.secrets["users"]["admin"]["password"]
+        except Exception:
+            expected_pw = "admin"
+
+        log_unlocked = st.session_state.get("log_unlocked", False)
+        pw_input = st.text_input(
+            "Password to unlock attendance logging",
+            type="password",
+            key="log_pw",
+        )
+        if st.button("Unlock Attendance Logging", key="log_unlock_btn"):
+            if pw_input == expected_pw:
+                st.session_state["log_unlocked"] = True
+                log_unlocked = True
+                st.success("Attendance logging unlocked for this session.")
+            else:
+                st.error("Incorrect password.")
+
+        if log_unlocked:
+            attendance_date = st.date_input("Attendance date", value=date.today())
+
+            status_by_player: Dict[str, str] = {}
+
+            groups = sorted({p.get("group") for p in players})
+
+            with st.form("attendance_form"):
+                for g in groups:
+                    group_players = [p for p in players if p.get("group") == g]
+                    if not group_players:
+                        continue
+
+                    group_label = str(g)
+                    if not group_label.lower().startswith("group"):
+                        display_group_label = f"Group {group_label}"
+                    else:
+                        display_group_label = group_label
+
+                    group_expander = st.expander(display_group_label, expanded=True)
+                    with group_expander:
+                        columns = st.columns(2)
+                        for idx, p in enumerate(group_players):
+                            name = p.get("name")
+                            if not name:
+                                continue
+
+                            label = name
+                            if bool(p.get("is_leader")):
+                                label = f"{name} (Leader)"
+
+                            widget_key = f"attendance_{g}_{name}"
+                            target_col = columns[idx % len(columns)]
+                            with target_col:
+                                selected_status = st.selectbox(
+                                    label,
+                                    STATUS_OPTIONS,
+                                    index=0,
+                                    key=widget_key,
+                                )
+                            status_by_player[name] = selected_status
+
+                submitted = st.form_submit_button("Submit Attendance")
+
+            if submitted:
+                if not status_by_player:
+                    st.warning("No attendance data to submit.")
+                else:
+                    apply_fine_rules(supabase, players, status_by_player)
+                    insert_attendance_records(supabase, attendance_date, status_by_player)
+                    st.success("Attendance submitted and balances updated.")
+        else:
+            st.info("Attendance logging is locked. Enter the password above to unlock.")
+
+    with tab_logs:
+        render_attendance_logs(supabase)
 
 
 if __name__ == "__main__":
