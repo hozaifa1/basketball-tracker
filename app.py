@@ -517,11 +517,15 @@ def render_leaderboard(client: Client) -> None:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
 
-    if "total_balance" in df.columns:
+    if "group" in df.columns:
+        if "total_balance" in df.columns:
+            df = df.sort_values(["group", "total_balance"], ascending=[True, False])
+        else:
+            df = df.sort_values("group", ascending=True)
+    elif "total_balance" in df.columns:
         df = df.sort_values("total_balance", ascending=False)
 
     df = df.reset_index(drop=True)
-    df.insert(0, "Rank", range(1, len(df) + 1))
 
     if "is_leader" in df.columns:
         df["is_leader"] = df["is_leader"].apply(lambda x: "Leader" if bool(x) else "")
@@ -580,56 +584,143 @@ def render_attendance_logs(client: Client) -> None:
 
     st.dataframe(df_display, use_container_width=True)
 
-    if "id" in df.columns and not df["id"].isnull().all():
-        try:
-            expected_pw = st.secrets["users"]["admin"]["password"]
-        except Exception:
-            expected_pw = "admin"
+    if "id" not in df.columns or df["id"].isnull().all():
+        return
 
-        delete_unlocked = st.session_state.get("delete_unlocked", False)
+    try:
+        expected_pw = st.secrets["users"]["admin"]["password"]
+    except Exception:
+        expected_pw = "admin"
 
-        st.markdown("### Delete Attendance Entry (Password Required)")
-        pw_input = st.text_input(
-            "Password to unlock delete controls",
-            type="password",
-            key="delete_pw",
-        )
-        if st.button("Unlock Delete Controls", key="delete_unlock_btn"):
-            if pw_input == expected_pw:
-                st.session_state["delete_unlocked"] = True
-                delete_unlocked = True
-                st.success("Delete controls unlocked for this session.")
+    logs_unlocked = st.session_state.get("logs_unlocked", False)
+
+    st.markdown("### Edit & Delete Attendance (Password Required)")
+    pw_input = st.text_input(
+        "Password to unlock editing and delete controls",
+        type="password",
+        key="logs_pw",
+    )
+    if st.button("Unlock Logs Controls", key="logs_unlock_btn"):
+        if pw_input == expected_pw:
+            st.session_state["logs_unlocked"] = True
+            logs_unlocked = True
+            st.success("Log editing and delete controls unlocked for this session.")
+        else:
+            st.error("Incorrect password.")
+
+    if not logs_unlocked:
+        st.info("Editing and delete controls are locked. Enter the password above to unlock.")
+        return
+
+    df_for_editor = df.copy()
+    if "selected" not in df_for_editor.columns:
+        df_for_editor["selected"] = False
+
+    try:
+        players_data = fetch_players(client)
+        player_options = sorted({p.get("name") for p in players_data if p.get("name")})
+    except Exception:
+        player_options = sorted({n for n in df_for_editor.get("player_name", []) if n})
+
+    edited_df = st.data_editor(
+        df_for_editor,
+        hide_index=True,
+        disabled=["id", "date"],
+        use_container_width=True,
+        key="attendance_logs_editor",
+        column_config={
+            "id": st.column_config.NumberColumn("ID", width="small"),
+            "date": st.column_config.DateColumn("Date"),
+            "player_name": st.column_config.SelectboxColumn("Player", options=player_options),
+            "status": st.column_config.SelectboxColumn("Status", options=STATUS_OPTIONS),
+            "selected": st.column_config.CheckboxColumn("Select"),
+        },
+    )
+
+    original_by_id = {
+        row["id"]: row for row in df.to_dict(orient="records") if row.get("id") is not None
+    }
+
+    col_save, col_delete = st.columns(2)
+
+    with col_save:
+        if st.button("Save Edits", key="logs_save_edits"):
+            updated_count = 0
+            for row in edited_df.to_dict(orient="records"):
+                rid = row.get("id")
+                if rid is None or rid not in original_by_id:
+                    continue
+                original = original_by_id[rid]
+                new_status = row.get("status")
+                new_player = row.get("player_name")
+
+                update_fields: Dict[str, Any] = {}
+                if new_status != original.get("status"):
+                    update_fields["status"] = new_status
+                if new_player != original.get("player_name"):
+                    update_fields["player_name"] = new_player
+
+                if not update_fields:
+                    continue
+
+                try:
+                    response = (
+                        client.table("attendance")
+                        .update(update_fields)
+                        .eq("id", rid)
+                        .execute()
+                    )
+                except Exception as exc:
+                    st.error(f"Failed to update attendance entry {rid}: {exc}")
+                    continue
+                error = getattr(response, "error", None)
+                if error:
+                    st.error(f"Supabase error while updating entry {rid}: {error}")
+                    continue
+                updated_count += 1
+
+            if updated_count > 0:
+                st.success(
+                    f"Saved edits for {updated_count} entr"
+                    + ("y" if updated_count == 1 else "ies")
+                    + "."
+                )
+                st.rerun()
             else:
-                st.error("Incorrect password.")
+                st.info("No changes detected to save.")
 
-        if not delete_unlocked:
-            st.info("Delete controls are locked. Enter the password above to unlock.")
-            return
+    with col_delete:
+        select_all = st.checkbox("Select all rows", key="logs_select_all")
+        if st.button("Delete Selected Logs", key="logs_delete_selected"):
+            if select_all:
+                selected_ids = [
+                    row.get("id")
+                    for row in edited_df.to_dict(orient="records")
+                    if row.get("id") is not None
+                ]
+            else:
+                selected_ids = [
+                    row.get("id")
+                    for row in edited_df.to_dict(orient="records")
+                    if row.get("selected") and row.get("id") is not None
+                ]
 
-        log_rows = df.to_dict(orient="records")
-        option_labels = [
-            f"{idx + 1}. {row.get('date', 'Unknown Date')} — {row.get('player_name', 'Unknown')} ({row.get('status', 'Unknown')})"
-            for idx, row in enumerate(log_rows)
-        ]
-        id_lookup = {
-            label: row.get("id")
-            for label, row in zip(option_labels, log_rows)
-            if row.get("id") is not None
-        }
-
-        if not id_lookup:
-            st.warning("No deletable entries found (missing IDs).")
-            return
-
-        with st.form("delete_attendance_entry_form"):
-            selected_label = st.selectbox("Select a log entry to delete", list(id_lookup.keys()))
-            confirm = st.form_submit_button("Delete Selected Entry")
-
-            if confirm:
-                success = delete_attendance_entry(client, id_lookup[selected_label])
-                if success:
-                    st.success("Attendance entry deleted.")
+            if not selected_ids:
+                st.warning("No rows selected for deletion.")
+            else:
+                deleted_count = 0
+                for rid in selected_ids:
+                    if delete_attendance_entry(client, rid):
+                        deleted_count += 1
+                if deleted_count > 0:
+                    st.success(
+                        f"Deleted {deleted_count} entr"
+                        + ("y" if deleted_count == 1 else "ies")
+                        + "."
+                    )
                     st.rerun()
+                else:
+                    st.error("No entries were deleted.")
 
 
 def main() -> None:
@@ -745,6 +836,15 @@ def main() -> None:
 
     with tab_logs:
         render_attendance_logs(supabase)
+
+    st.markdown(
+        """
+        <div class="bb-footer" style="margin-top: 2rem; padding: 0.75rem 0; font-size: 0.8rem; color: #9ca3af; text-align: center; border-top: 1px solid #1f2937;">
+            -Made by S. M. Hozaifa Hossain, Treasurer, DU EEE-55
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 if __name__ == "__main__":
