@@ -14,6 +14,51 @@ STATUS_OPTIONS = [
 ]
 
 
+def inject_global_css() -> None:
+    css = """
+    <style>
+    .stApp {
+        background: radial-gradient(circle at 0 0, #1f2937 0, #020617 45%, #020617 100%);
+        color: #e5e7eb;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    }
+    .bb-header {
+        padding: 1.75rem 0 1rem 0;
+        border-bottom: 1px solid #1f2937;
+        margin-bottom: 0.5rem;
+    }
+    .bb-header-title {
+        font-size: 2rem;
+        font-weight: 800;
+        color: #f97316;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+    .bb-header-subtitle {
+        font-size: 0.95rem;
+        color: #9ca3af;
+    }
+    [data-testid="stSidebar"] {
+        background: #020617;
+        border-right: 1px solid #111827;
+    }
+    [data-testid="stSidebar"] * {
+        color: #e5e7eb !important;
+    }
+    [data-testid="stExpander"] {
+        border-radius: 0.75rem;
+        border: 1px solid #1f2937;
+        background: rgba(15,23,42,0.9);
+    }
+    [data-testid="stExpander"] summary {
+        font-weight: 600;
+        color: #f97316;
+    }
+    </style>
+    """
+    st.markdown(css, unsafe_allow_html=True)
+
+
 @st.cache_resource
 def get_supabase_client() -> Client:
     try:
@@ -237,30 +282,66 @@ def render_leaderboard(client: Client) -> None:
 
     df = pd.DataFrame(data)
 
-    # Ensure numeric types for balances
     for col in ["total_balance", "akib_balance"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
 
-    def highlight_negative(val: Any) -> str:
+    if "total_balance" in df.columns:
+        df = df.sort_values("total_balance", ascending=False)
+
+    df = df.reset_index(drop=True)
+    df.insert(0, "Rank", range(1, len(df) + 1))
+
+    if "is_leader" in df.columns:
+        df["is_leader"] = df["is_leader"].apply(lambda x: "Leader" if bool(x) else "")
+
+    rename_map = {
+        "name": "Player",
+        "group": "Group",
+        "is_leader": "Role",
+        "total_balance": "Total Balance",
+        "akib_balance": "Akib Balance",
+    }
+    df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
+
+    def highlight_balance(val: Any) -> str:
         try:
             v = float(val)
         except (TypeError, ValueError):
             return ""
-        return "color: red" if v < 0 else ""
+        if v < 0:
+            return "color: #ef4444; font-weight: 600;"
+        if v > 0:
+            return "color: #22c55e; font-weight: 600;"
+        return "color: #e5e7eb;"
 
-    subset_cols = [c for c in ["total_balance", "akib_balance"] if c in df.columns]
+    subset_cols = [c for c in ["Total Balance", "Akib Balance"] if c in df.columns]
     if subset_cols:
-        styled = df.style.applymap(highlight_negative, subset=subset_cols)
+        styled = (
+            df.style.hide(axis="index")
+            .applymap(highlight_balance, subset=subset_cols)
+        )
         st.dataframe(styled, use_container_width=True)
     else:
-        st.dataframe(df, use_container_width=True)
+        styled = df.style.hide(axis="index")
+        st.dataframe(styled, use_container_width=True)
 
 
 def main() -> None:
     st.set_page_config(page_title="Basketball Budget Tracker", layout="wide")
 
-    st.title("Basketball Budget Tracker")
+    inject_global_css()
+    st.markdown(
+        """
+        <div class="bb-header">
+            <div class="bb-header-title">Basketball Budget Tracker</div>
+            <div class="bb-header-subtitle">
+                Track attendance, fines, and leader balances for your squad.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     supabase = get_supabase_client()
 
@@ -298,25 +379,28 @@ def main() -> None:
                 else:
                     display_group_label = group_label
 
-                st.markdown(f"### {display_group_label}")
+                group_expander = st.expander(display_group_label, expanded=True)
+                with group_expander:
+                    columns = st.columns(2)
+                    for idx, p in enumerate(group_players):
+                        name = p.get("name")
+                        if not name:
+                            continue
 
-                for p in group_players:
-                    name = p.get("name")
-                    if not name:
-                        continue
+                        label = name
+                        if bool(p.get("is_leader")):
+                            label = f"{name} (Leader)"
 
-                    label = name
-                    if bool(p.get("is_leader")):
-                        label = f"{name} (Leader)"
-
-                    widget_key = f"attendance_{g}_{name}"
-                    selected_status = st.selectbox(
-                        label,
-                        STATUS_OPTIONS,
-                        index=0,
-                        key=widget_key,
-                    )
-                    status_by_player[name] = selected_status
+                        widget_key = f"attendance_{g}_{name}"
+                        target_col = columns[idx % len(columns)]
+                        with target_col:
+                            selected_status = st.selectbox(
+                                label,
+                                STATUS_OPTIONS,
+                                index=0,
+                                key=widget_key,
+                            )
+                        status_by_player[name] = selected_status
 
             submitted = st.form_submit_button("Submit Attendance")
 
