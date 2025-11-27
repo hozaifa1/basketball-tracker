@@ -487,6 +487,167 @@ def apply_fine_rules(
             st.error(f"Supabase error while updating {name}: {error}")
 
 
+def recompute_all_balances(client: Client) -> None:
+    """Recompute all player balances from the full attendance history."""
+    players = fetch_players(client)
+    if not players:
+        return
+
+    players_by_name: Dict[str, Dict[str, Any]] = {
+        p.get("name"): p for p in players if p.get("name") is not None
+    }
+
+    # Initialize aggregate deltas
+    agg_deltas: Dict[str, Dict[str, float]] = {}
+    for name in players_by_name.keys():
+        agg_deltas[name] = {"total": 0.0, "akib": 0.0}
+
+    # Load all attendance records ordered by date
+    try:
+        response = (
+            client.table("attendance")
+            .select("date, player_name, status")
+            .order("date", asc=True)
+            .execute()
+        )
+    except Exception as exc:
+        st.error(f"Failed to recompute balances from attendance: {exc}")
+        return
+
+    data = getattr(response, "data", None)
+    error = getattr(response, "error", None)
+
+    if error:
+        st.error(f"Supabase error while reading attendance for recompute: {error}")
+        return
+
+    if not data:
+        # No attendance at all → zero out balances
+        for name in players_by_name.keys():
+            try:
+                client.table("players").update(
+                    {"total_balance": 0, "akib_balance": 0}
+                ).eq("name", name).execute()
+            except Exception as exc:
+                st.error(f"Failed to reset balances for {name}: {exc}")
+        return
+
+    # Group attendance by date
+    by_date: Dict[str, Dict[str, str]] = {}
+    for row in data:
+        d = row.get("date")
+        player_name = row.get("player_name")
+        status = row.get("status")
+        if not d or not player_name or not status:
+            continue
+        key = str(d)
+        if key not in by_date:
+            by_date[key] = {}
+        by_date[key][player_name] = status
+
+    # Local helper: compute deltas for a single day
+    def daily_deltas(status_by_player: Dict[str, str]) -> Dict[str, Dict[str, float]]:
+        deltas: Dict[str, Dict[str, float]] = {}
+        for name in players_by_name.keys():
+            deltas[name] = {"total": 0.0, "akib": 0.0}
+
+        statuses = list(status_by_player.values())
+        num_late = sum(1 for s in statuses if s == "Late")
+        num_absent_uninformed = sum(1 for s in statuses if s == "Absent-Uninformed")
+
+        def get_group(player_name: str) -> Any:
+            p = players_by_name.get(player_name)
+            if not p:
+                return None
+            return p.get("group")
+
+        def leaders_in_group(group_value: Any) -> List[Dict[str, Any]]:
+            return [
+                p
+                for p in players
+                if p.get("group") == group_value and bool(p.get("is_leader"))
+            ]
+
+        # Rule 1: Team Perfect
+        if num_late == 0 and num_absent_uninformed == 0:
+            for p in players:
+                if bool(p.get("is_leader")) and p.get("name") in deltas:
+                    deltas[p["name"]]["total"] += 20
+                    deltas[p["name"]]["akib"] -= 20
+
+        # Rule 4: One Absent-Uninformed
+        elif num_late == 0 and num_absent_uninformed == 1:
+            absent_name = None
+            for name, status in status_by_player.items():
+                if status == "Absent-Uninformed":
+                    absent_name = name
+                    break
+
+            if absent_name is not None:
+                group_value = get_group(absent_name)
+                if group_value is not None:
+                    leaders = leaders_in_group(group_value)
+                    for leader in leaders:
+                        lname = leader.get("name")
+                        if lname in deltas:
+                            deltas[lname]["total"] -= 10
+                            deltas[lname]["akib"] += 10
+
+        # Rule 2: Leader Late
+        for p in players:
+            name = p.get("name")
+            if not name:
+                continue
+            if bool(p.get("is_leader")) and status_by_player.get(name) == "Late":
+                deltas[name]["total"] -= 40
+                deltas[name]["akib"] += 40
+
+        # Rule 3: Group Suicide
+        groups = sorted({p.get("group") for p in players})
+        for g in groups:
+            group_players = [p for p in players if p.get("group") == g]
+            late_players = [
+                p for p in group_players if status_by_player.get(p.get("name")) == "Late"
+            ]
+            n_late = len(late_players)
+            if n_late <= 0:
+                continue
+
+            leaders = [p for p in group_players if bool(p.get("is_leader"))]
+            for leader in leaders:
+                lname = leader.get("name")
+                if lname in deltas:
+                    deltas[lname]["total"] += 10 * n_late
+
+            for lp in late_players:
+                lpname = lp.get("name")
+                if lpname in deltas:
+                    deltas[lpname]["total"] -= 10
+
+        return deltas
+
+    for date_key in sorted(by_date.keys()):
+        day_status = by_date[date_key]
+        daily = daily_deltas(day_status)
+        for name, delta in daily.items():
+            agg_deltas[name]["total"] += delta["total"]
+            agg_deltas[name]["akib"] += delta["akib"]
+
+    # Apply aggregate deltas as absolute balances (baseline = 0)
+    for name, sums in agg_deltas.items():
+        if name not in players_by_name:
+            continue
+        try:
+            client.table("players").update(
+                {
+                    "total_balance": int(sums["total"]),
+                    "akib_balance": int(sums["akib"]),
+                }
+            ).eq("name", name).execute()
+        except Exception as exc:
+            st.error(f"Failed to apply recomputed balances for {name}: {exc}")
+
+
 def render_leaderboard(client: Client) -> None:
     """Fetch players and display a leaderboard sorted by total_balance."""
     try:
@@ -608,19 +769,23 @@ def render_attendance_logs(client: Client) -> None:
         else:
             st.error("Incorrect password.")
 
-    if not logs_unlocked:
-        st.info("Editing and delete controls are locked. Enter the password above to unlock.")
-        return
-
     df_for_editor = df.copy()
     if "selected" not in df_for_editor.columns:
         df_for_editor["selected"] = False
+
+    # If Select all was toggled previously, reflect it in the table
+    if st.session_state.get("logs_select_all", False):
+        df_for_editor["selected"] = True
 
     try:
         players_data = fetch_players(client)
         player_options = sorted({p.get("name") for p in players_data if p.get("name")})
     except Exception:
         player_options = sorted({n for n in df_for_editor.get("player_name", []) if n})
+
+    if not logs_unlocked:
+        st.info("Editing and delete controls are locked. Enter the password above to unlock.")
+        return
 
     edited_df = st.data_editor(
         df_for_editor,
@@ -680,6 +845,7 @@ def render_attendance_logs(client: Client) -> None:
                 updated_count += 1
 
             if updated_count > 0:
+                recompute_all_balances(client)
                 st.success(
                     f"Saved edits for {updated_count} entr"
                     + ("y" if updated_count == 1 else "ies")
@@ -713,6 +879,7 @@ def render_attendance_logs(client: Client) -> None:
                     if delete_attendance_entry(client, rid):
                         deleted_count += 1
                 if deleted_count > 0:
+                    recompute_all_balances(client)
                     st.success(
                         f"Deleted {deleted_count} entr"
                         + ("y" if deleted_count == 1 else "ies")
