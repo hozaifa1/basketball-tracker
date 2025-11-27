@@ -913,10 +913,6 @@ def main() -> None:
 
     supabase = get_supabase_client()
 
-    # Sidebar configuration info
-    st.sidebar.header("Configuration")
-    st.sidebar.write("Supabase connection: configured via st.secrets")
-
     players = fetch_players(supabase)
     if not players:
         st.info("No players configured in the database yet.")
