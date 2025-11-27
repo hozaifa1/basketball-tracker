@@ -218,6 +218,16 @@ def apply_fine_rules(
             if lpname in deltas:
                 deltas[lpname]["total"] -= 10
 
+    def to_int(value: Any) -> int:
+        """Safely convert numeric/str values to an int, defaulting to 0 on failure."""
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            try:
+                return int(float(value))
+            except (TypeError, ValueError):
+                return 0
+
     # Apply deltas to Supabase
     for name, delta in deltas.items():
         player = players_by_name.get(name)
@@ -232,13 +242,8 @@ def apply_fine_rules(
         current_total = player.get("total_balance")
         current_akib = player.get("akib_balance")
 
-        if current_total is None:
-            current_total = 0
-        if current_akib is None:
-            current_akib = 0
-
-        new_total = float(current_total) + float(d_total)
-        new_akib = float(current_akib) + float(d_akib)
+        new_total = to_int(current_total) + to_int(d_total)
+        new_akib = to_int(current_akib) + to_int(d_akib)
 
         update_data = {
             "total_balance": new_total,
