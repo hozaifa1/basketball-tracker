@@ -185,7 +185,16 @@ def inject_global_css() -> None:
     [data-testid="stTable"] table th,
     [data-testid="stTable"] table td,
     [data-testid="stDataFrame"] table th,
-    [data-testid="stDataFrame"] table td {
+    [data-testid="stDataFrame"] table td,
+    table th,
+    table td {
+        text-align: center !important;
+    }
+    [data-testid="stTable"] table th > div,
+    [data-testid="stTable"] table td > div,
+    [data-testid="stDataFrame"] table th > div,
+    [data-testid="stDataFrame"] table td > div {
+        justify-content: center !important;
         text-align: center !important;
     }
 
@@ -803,10 +812,11 @@ def render_leaderboard(client: Client) -> None:
         styled = (
             df.style.hide(axis="index")
             .applymap(highlight_balance, subset=subset_cols)
+            .set_properties(**{"text-align": "center"})
         )
         st.dataframe(styled, use_container_width=True)
     else:
-        styled = df.style.hide(axis="index")
+        styled = df.style.hide(axis="index").set_properties(**{"text-align": "center"})
         st.dataframe(styled, use_container_width=True)
 
 
@@ -830,7 +840,8 @@ def render_attendance_logs(client: Client) -> None:
     }
     df_display = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
 
-    st.dataframe(df_display, use_container_width=True)
+    styled_logs = df_display.style.hide(axis="index").set_properties(**{"text-align": "center"})
+    st.dataframe(styled_logs, use_container_width=True)
 
     if "id" not in df.columns or df["id"].isnull().all():
         return
@@ -1022,11 +1033,11 @@ def main() -> None:
                 <div class="bb-rules-heading">Fine Rules</div>
                 <div class="bb-rules-note">Balances are fully recomputed from attendance logs using these rules:</div>
                 <ol class="bb-rules-list">
-                    <li><span class="bb-rule-name">Team Perfect</span> – If everyone is <em>On Time</em> or <em>Absent-Informed</em>, every leader gets <strong>+20</strong> to total balance and their Akib balance <strong>−20</strong>.</li>
-                    <li><span class="bb-rule-name">Leader Late</span> – For each leader marked <em>Late</em>, that leader gets <strong>−40</strong> to total balance and Akib balance <strong>+40</strong>.</li>
-                    <li><span class="bb-rule-name">Group Suicide</span> – For each group, let <em>N</em> be the number of players marked <em>Late</em>: each leader in that group gets <strong>+10 × N</strong>, and every late player gets <strong>−10</strong>.</li>
-                    <li><span class="bb-rule-name">One Absent-Uninformed</span> – If exactly one player in the team is <em>Absent-Uninformed</em> and everyone else is On Time / Absent-Informed, that player’s group leader gets <strong>−10</strong> total balance and Akib balance <strong>+10</strong>.</li>
-                    <li><span class="bb-rule-name">Absent-Informed</span> – Has no direct penalty, it only affects whether the other rules trigger.</li>
+                    <li><span class="bb-rule-name">Team Perfect</span> – If everyone is <em>On Time</em> or <em>Absent-Informed</em>, Akib bhai will pay a reward of 20 to each group leader.</li>
+                    <li><span class="bb-rule-name">Leader Late</span> – For each group leader marked <em>Late</em>, that leader will pay 40 to Akib bhai.</li>
+                    <li><span class="bb-rule-name">Group Suicide</span> – In each group, whenever a member is marked <em>Late</em>, that player will pay 10 to their own group leader. Members always pay to their team leader, not directly to Akib bhai.</li>
+                    <li><span class="bb-rule-name">One Absent-Uninformed</span> – If exactly one player in the team is <em>Absent-Uninformed</em> and everyone else is On Time / Absent-Informed, that player’s group leader will pay 10 to Akib bhai.</li>
+                    <li><span class="bb-rule-name">Absent-Informed</span> – Has no direct fine; it only affects whether the other rules above are triggered.</li>
                 </ol>
             </div>
             """,
