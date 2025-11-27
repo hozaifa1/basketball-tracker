@@ -487,11 +487,14 @@ def apply_fine_rules(
             st.error(f"Supabase error while updating {name}: {error}")
 
 
-def recompute_all_balances(client: Client) -> None:
-    """Recompute all player balances from the full attendance history."""
+def recompute_all_balances(client: Client) -> bool:
+    """Recompute all player balances from the full attendance history.
+
+    Returns True on success, False if any Supabase error/exception occurs.
+    """
     players = fetch_players(client)
     if not players:
-        return
+        return True
 
     players_by_name: Dict[str, Dict[str, Any]] = {
         p.get("name"): p for p in players if p.get("name") is not None
@@ -507,19 +510,19 @@ def recompute_all_balances(client: Client) -> None:
         response = (
             client.table("attendance")
             .select("date, player_name, status")
-            .order("date", asc=True)
+            .order("date")  # ascending by default
             .execute()
         )
     except Exception as exc:
         st.error(f"Failed to recompute balances from attendance: {exc}")
-        return
+        return False
 
     data = getattr(response, "data", None)
     error = getattr(response, "error", None)
 
     if error:
         st.error(f"Supabase error while reading attendance for recompute: {error}")
-        return
+        return False
 
     if not data:
         # No attendance at all → zero out balances
@@ -530,7 +533,8 @@ def recompute_all_balances(client: Client) -> None:
                 ).eq("name", name).execute()
             except Exception as exc:
                 st.error(f"Failed to reset balances for {name}: {exc}")
-        return
+                return False
+        return True
 
     # Group attendance by date
     by_date: Dict[str, Dict[str, str]] = {}
@@ -646,6 +650,9 @@ def recompute_all_balances(client: Client) -> None:
             ).eq("name", name).execute()
         except Exception as exc:
             st.error(f"Failed to apply recomputed balances for {name}: {exc}")
+            return False
+
+    return True
 
 
 def render_leaderboard(client: Client) -> None:
@@ -768,13 +775,16 @@ def render_attendance_logs(client: Client) -> None:
             st.success("Log editing and delete controls unlocked for this session.")
         else:
             st.error("Incorrect password.")
+    if not logs_unlocked:
+        st.info("Editing and delete controls are locked. Enter the password above to unlock.")
+        return
+
+    select_all = st.checkbox("Select all rows", key="logs_select_all")
 
     df_for_editor = df.copy()
     if "selected" not in df_for_editor.columns:
         df_for_editor["selected"] = False
-
-    # If Select all was toggled previously, reflect it in the table
-    if st.session_state.get("logs_select_all", False):
+    if select_all:
         df_for_editor["selected"] = True
 
     try:
@@ -782,10 +792,6 @@ def render_attendance_logs(client: Client) -> None:
         player_options = sorted({p.get("name") for p in players_data if p.get("name")})
     except Exception:
         player_options = sorted({n for n in df_for_editor.get("player_name", []) if n})
-
-    if not logs_unlocked:
-        st.info("Editing and delete controls are locked. Enter the password above to unlock.")
-        return
 
     edited_df = st.data_editor(
         df_for_editor,
@@ -856,7 +862,6 @@ def render_attendance_logs(client: Client) -> None:
                 st.info("No changes detected to save.")
 
     with col_delete:
-        select_all = st.checkbox("Select all rows", key="logs_select_all")
         if st.button("Delete Selected Logs", key="logs_delete_selected"):
             if select_all:
                 selected_ids = [
@@ -923,6 +928,12 @@ def main() -> None:
 
     with tab_balances:
         st.subheader("Balances & Costs")
+        if st.button("Recompute balances from attendance", key="recompute_balances_btn"):
+            ok = recompute_all_balances(supabase)
+            if ok:
+                st.success("Balances recomputed from attendance history.")
+                st.rerun()
+
         render_leaderboard(supabase)
 
     with tab_log:
@@ -995,9 +1006,10 @@ def main() -> None:
                 if not status_by_player:
                     st.warning("No attendance data to submit.")
                 else:
-                    apply_fine_rules(supabase, players, status_by_player)
                     insert_attendance_records(supabase, attendance_date, status_by_player)
-                    st.success("Attendance submitted and balances updated.")
+                    ok = recompute_all_balances(supabase)
+                    if ok:
+                        st.success("Attendance submitted and balances updated.")
         else:
             st.info("Attendance logging is locked. Enter the password above to unlock.")
 
