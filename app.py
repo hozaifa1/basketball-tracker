@@ -212,7 +212,14 @@ def require_user_login(user_store: Dict[str, Dict[str, str]]) -> Dict[str, str]:
             if submitted:
                 username_key = raw_username.strip().lower()
                 user_record = user_store.get(username_key)
-                if user_record and password == user_record.get("password"):
+                input_pw = (password or "").strip()
+                stored_pw = str(user_record.get("password", "")) if user_record else ""
+
+                password_matches = bool(input_pw) and (
+                    input_pw == stored_pw or input_pw.lower() == stored_pw.lower()
+                )
+
+                if user_record and password_matches:
                     st.session_state["auth_user"] = {
                         "username": username_key,
                         "role": user_record.get("role", USER_ROLE_VIEWER),
@@ -220,7 +227,9 @@ def require_user_login(user_store: Dict[str, Dict[str, str]]) -> Dict[str, str]:
                     st.success("Login successful. Reloading...")
                     st.rerun()
                 else:
+                    known_users = ", ".join(sorted(user_store.keys())) or "(none)"
                     st.error("Invalid username or password.")
+                    st.caption(f"Configured usernames: {known_users}")
 
     st.stop()
 
@@ -628,17 +637,17 @@ def main() -> None:
         st.info("No players configured in the database yet.")
         return
 
-    attendance_col, leaderboard_col = st.columns([2, 1])
+    tab_log, tab_logs, tab_balances = st.tabs(
+        ["Log Attendance", "Attendance Logs", "Balances & Costs"]
+    )
 
-    with attendance_col:
-        st.subheader("Attendance Input")
+    with tab_log:
+        st.subheader("Log Attendance")
 
         attendance_date = st.date_input("Attendance date", value=date.today())
 
-        # Build form for attendance
         status_by_player: Dict[str, str] = {}
 
-        # Group players by their group value
         groups = sorted({p.get("group") for p in players})
 
         with st.form("attendance_form"):
@@ -686,11 +695,12 @@ def main() -> None:
                 insert_attendance_records(supabase, attendance_date, status_by_player)
                 st.success("Attendance submitted and balances updated.")
 
-    with leaderboard_col:
-        st.subheader("Leaderboard")
-        render_leaderboard(supabase)
+    with tab_logs:
+        render_attendance_logs(supabase, is_admin)
 
-    render_attendance_logs(supabase, is_admin)
+    with tab_balances:
+        st.subheader("Balances & Costs")
+        render_leaderboard(supabase)
 
 
 if __name__ == "__main__":
