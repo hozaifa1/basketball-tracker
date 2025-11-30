@@ -1,47 +1,75 @@
 'use client';
+
 import { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import { API_BASE_URL } from '@/config';
+import {
+  Lock,
+  UserPlus,
+  CreditCard,
+  Users,
+  Trash2,
+  AlertCircle,
+  Loader2,
+  Crown,
+  Wallet,
+  User,
+  Plus,
+  DollarSign
+} from 'lucide-react';
 
 type Player = {
-  id: number;
+  id: string;
   name: string;
   role: string;
   group_id: number | null;
-  balance: string;
+  balance: number;
 };
 
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
   const [players, setPlayers] = useState<Player[]>([]);
+  const [loading, setLoading] = useState(true);
 
   // Player Form State
   const [name, setName] = useState('');
   const [role, setRole] = useState('Member');
   const [groupId, setGroupId] = useState('');
+  const [addingPlayer, setAddingPlayer] = useState(false);
 
   // Payment Form State
   const [paymentPlayerId, setPaymentPlayerId] = useState('');
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentNotes, setPaymentNotes] = useState('');
+  const [recordingPayment, setRecordingPayment] = useState(false);
 
   useEffect(() => {
     if (sessionStorage.getItem('auth') === 'true') {
       setIsAuthenticated(true);
+      setPassword(sessionStorage.getItem('pwd') || '');
       fetchPlayers();
+    } else {
+      setLoading(false);
     }
   }, []);
 
-  const fetchPlayers = () => {
-    fetch(`${API_BASE_URL}/players/`)
-      .then(res => res.json())
-      .then(data => setPlayers(data))
-      .catch(err => console.error(err));
+  const fetchPlayers = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/players/`);
+      const data = await res.json();
+      setPlayers(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoginError('');
     try {
       const res = await fetch(`${API_BASE_URL}/auth/`, {
         method: 'POST',
@@ -52,54 +80,52 @@ export default function AdminPage() {
       if (data.authenticated) {
         setIsAuthenticated(true);
         sessionStorage.setItem('auth', 'true');
+        sessionStorage.setItem('pwd', password);
         fetchPlayers();
       } else {
-        alert('Incorrect password');
+        setLoginError('Incorrect password');
       }
-    } catch (err) {
-      alert('Login failed');
+    } catch {
+      setLoginError('Connection failed');
     }
   };
 
   const addPlayer = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAddingPlayer(true);
     const payload = {
       name,
       role,
       group_id: groupId ? parseInt(groupId) : null,
-      balance: "0.00"
     };
 
     try {
       const res = await fetch(`${API_BASE_URL}/players/`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Shared-Password': password
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       if (res.ok) {
         setName('');
         setGroupId('');
+        setRole('Member');
         fetchPlayers();
       } else {
         alert('Failed to add player');
       }
-    } catch (err) {
+    } catch {
       alert('Error adding player');
+    } finally {
+      setAddingPlayer(false);
     }
   };
 
-  const deletePlayer = async (id: number) => {
-    if (!confirm('Delete player?')) return;
+  const deletePlayer = async (id: string, playerName: string) => {
+    if (!confirm(`Delete ${playerName}? This action cannot be undone.`)) return;
     try {
-      await fetch(`${API_BASE_URL}/players/${id}/`, {
-        method: 'DELETE',
-        headers: { 'X-Shared-Password': password }
-      });
+      await fetch(`${API_BASE_URL}/players/${id}/`, { method: 'DELETE' });
       fetchPlayers();
-    } catch (err) {
+    } catch {
       alert('Error deleting');
     }
   };
@@ -108,179 +134,357 @@ export default function AdminPage() {
     e.preventDefault();
     if (!paymentPlayerId || !paymentAmount) return;
 
+    setRecordingPayment(true);
     const payload = {
-      player: parseInt(paymentPlayerId),
+      player_id: paymentPlayerId,
       amount: parseFloat(paymentAmount),
-      notes: paymentNotes
+      notes: paymentNotes || null,
     };
 
     try {
       const res = await fetch(`${API_BASE_URL}/payments/`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Shared-Password': password
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       if (res.ok) {
+        setPaymentPlayerId('');
         setPaymentAmount('');
         setPaymentNotes('');
-        alert('Payment recorded!');
+        alert('Payment recorded successfully!');
         fetchPlayers();
       } else {
         alert('Failed to record payment');
       }
-    } catch (err) {
+    } catch {
       alert('Error recording payment');
+    } finally {
+      setRecordingPayment(false);
     }
   };
 
+  const getRoleIcon = (role: string) => {
+    switch (role) {
+      case 'Leader':
+        return <Crown className="text-orange-400" size={14} />;
+      case 'Treasurer':
+        return <Wallet className="text-purple-400" size={14} />;
+      default:
+        return <User className="text-gray-400" size={14} />;
+    }
+  };
+
+  const getRoleBadge = (role: string) => {
+    switch (role) {
+      case 'Leader':
+        return 'bg-orange-500/10 text-orange-400 border-orange-500/20';
+      case 'Treasurer':
+        return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
+      default:
+        return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+    }
+  };
+
+  // Login Screen
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-black">
-        <form onSubmit={handleLogin} className="bg-gray-900 p-8 rounded-lg border border-gray-800 w-full max-w-md">
-          <h2 className="text-2xl text-orange-500 font-bold mb-6 text-center">Admin Login</h2>
-          <input
-            type="password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            placeholder="Enter Password"
-            className="w-full bg-gray-800 text-white border border-gray-700 rounded px-4 py-2 mb-4 focus:outline-none focus:border-orange-500"
-          />
-          <button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded transition-colors">
-            Manage Players
-          </button>
-        </form>
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-orange-500/20">
+              <Lock className="text-white" size={28} />
+            </div>
+            <h1 className="text-2xl font-bold text-white mb-2">Admin Panel</h1>
+            <p className="text-gray-500 text-sm">Manage players and record payments</p>
+          </div>
+
+          <form onSubmit={handleLogin} className="bg-white/[0.02] border border-white/10 rounded-2xl p-6">
+            <input
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="Enter password..."
+              className="w-full bg-white/5 text-white border border-white/10 rounded-xl px-4 py-3 mb-4 focus:outline-none focus:border-orange-500/50 transition-all placeholder:text-gray-600"
+              autoFocus
+            />
+            {loginError && (
+              <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-center gap-2">
+                <AlertCircle size={16} />
+                {loginError}
+              </div>
+            )}
+            <button
+              type="submit"
+              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold py-3 rounded-xl transition-all shadow-lg shadow-orange-500/20"
+            >
+              Access Admin Panel
+            </button>
+          </form>
+        </div>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-black">
-      <Navbar />
-      <div className="max-w-7xl mx-auto py-10 px-4">
-        <h1 className="text-3xl font-bold text-orange-500 mb-8">Admin Dashboard</h1>
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a]">
+        <Navbar />
+        <div className="flex items-center justify-center h-[80vh]">
+          <Loader2 className="animate-spin text-orange-500" size={40} />
+        </div>
+      </div>
+    );
+  }
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-          {/* Add Player */}
-          <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-            <h2 className="text-xl font-bold text-white mb-4">Add New Player</h2>
-            <form onSubmit={addPlayer} className="flex flex-col gap-4">
-              <div className="flex gap-4">
+  // Group players by group_id
+  const groupedPlayers: Record<string, Player[]> = {};
+  players.forEach(p => {
+    const key = p.group_id ? `Group ${p.group_id}` : 'No Group';
+    if (!groupedPlayers[key]) groupedPlayers[key] = [];
+    groupedPlayers[key].push(p);
+  });
+
+  return (
+    <div className="min-h-screen bg-[#0a0a0a]">
+      <Navbar />
+
+      <div className="max-w-6xl mx-auto py-8 px-4">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-black mb-2">
+            <span className="bg-gradient-to-r from-orange-400 to-orange-600 bg-clip-text text-transparent">
+              Admin Panel
+            </span>
+          </h1>
+          <p className="text-gray-500">Manage players and record payments</p>
+        </div>
+
+        {/* Action Cards */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          {/* Add Player Card */}
+          <div className="bg-white/[0.02] border border-white/10 rounded-2xl p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
+                <UserPlus className="text-orange-500" size={20} />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-white">Add New Player</h2>
+                <p className="text-xs text-gray-500">Register a new team member</p>
+              </div>
+            </div>
+
+            <form onSubmit={addPlayer} className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Player Name</label>
                 <input
                   type="text"
-                  placeholder="Name"
+                  placeholder="Enter player name..."
                   value={name}
                   onChange={e => setName(e.target.value)}
-                  className="bg-gray-800 text-white px-4 py-2 rounded border border-gray-700 focus:border-orange-500 outline-none flex-grow"
+                  className="w-full bg-white/5 text-white border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500/50 transition-all placeholder:text-gray-600"
                   required
                 />
-                <input
-                  type="number"
-                  placeholder="Group"
-                  value={groupId}
-                  onChange={e => setGroupId(e.target.value)}
-                  className="bg-gray-800 text-white px-4 py-2 rounded border border-gray-700 focus:border-orange-500 outline-none w-24"
-                />
               </div>
-              <div className="flex gap-4">
-                <select
-                  value={role}
-                  onChange={e => setRole(e.target.value)}
-                  className="bg-gray-800 text-white px-4 py-2 rounded border border-gray-700 focus:border-orange-500 outline-none flex-grow"
-                >
-                  <option value="Member">Member</option>
-                  <option value="Leader">Leader</option>
-                  <option value="Treasurer">Treasurer</option>
-                </select>
-                <button type="submit" className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2 rounded font-bold transition-colors">
-                  Add
-                </button>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">Role</label>
+                  <select
+                    value={role}
+                    onChange={e => setRole(e.target.value)}
+                    className="w-full bg-white/5 text-white border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500/50 transition-all"
+                  >
+                    <option value="Member">Member</option>
+                    <option value="Leader">Leader</option>
+                    <option value="Treasurer">Treasurer</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">Group</label>
+                  <input
+                    type="number"
+                    placeholder="Group #"
+                    value={groupId}
+                    onChange={e => setGroupId(e.target.value)}
+                    className="w-full bg-white/5 text-white border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500/50 transition-all placeholder:text-gray-600"
+                  />
+                </div>
               </div>
+
+              <button
+                type="submit"
+                disabled={addingPlayer || !name}
+                className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-3 rounded-xl transition-all"
+              >
+                {addingPlayer ? (
+                  <Loader2 className="animate-spin" size={18} />
+                ) : (
+                  <Plus size={18} />
+                )}
+                Add Player
+              </button>
             </form>
           </div>
 
-          {/* Record Payment */}
-          <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-            <h2 className="text-xl font-bold text-white mb-4">Record Payment</h2>
-            <form onSubmit={addPayment} className="flex flex-col gap-4">
-              <select
-                value={paymentPlayerId}
-                onChange={e => setPaymentPlayerId(e.target.value)}
-                className="bg-gray-800 text-white px-4 py-2 rounded border border-gray-700 focus:border-orange-500 outline-none"
-                required
-              >
-                <option value="">Select Player...</option>
-                {players.map(p => (
-                  <option key={p.id} value={p.id}>{p.name} (Bal: {p.balance})</option>
-                ))}
-              </select>
-              <div className="flex gap-4">
+          {/* Record Payment Card */}
+          <div className="bg-white/[0.02] border border-white/10 rounded-2xl p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center border border-green-500/20">
+                <CreditCard className="text-green-500" size={20} />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-white">Record Payment</h2>
+                <p className="text-xs text-gray-500">Log a payment from a player</p>
+              </div>
+            </div>
+
+            <form onSubmit={addPayment} className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Select Player</label>
+                <select
+                  value={paymentPlayerId}
+                  onChange={e => setPaymentPlayerId(e.target.value)}
+                  className="w-full bg-white/5 text-white border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500/50 transition-all"
+                  required
+                >
+                  <option value="">Choose a player...</option>
+                  {players
+                    .filter(p => p.balance < 0)
+                    .map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} (Owes: {Math.abs(p.balance).toFixed(0)} BDT)
+                      </option>
+                    ))}
+                  <optgroup label="All Players">
+                    {players.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} (Balance: {p.balance.toFixed(0)} BDT)
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Amount (BDT)</label>
                 <input
                   type="number"
-                  placeholder="Amount"
+                  placeholder="Enter amount..."
                   value={paymentAmount}
                   onChange={e => setPaymentAmount(e.target.value)}
-                  className="bg-gray-800 text-white px-4 py-2 rounded border border-gray-700 focus:border-orange-500 outline-none flex-grow"
+                  className="w-full bg-white/5 text-white border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500/50 transition-all placeholder:text-gray-600"
                   required
-                  step="0.01"
+                  step="1"
                 />
-                <button type="submit" className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded font-bold transition-colors">
-                  Pay
-                </button>
               </div>
-              <input
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Notes (Optional)</label>
+                <input
                   type="text"
-                  placeholder="Notes (optional)"
+                  placeholder="Payment notes..."
                   value={paymentNotes}
                   onChange={e => setPaymentNotes(e.target.value)}
-                  className="bg-gray-800 text-white px-4 py-2 rounded border border-gray-700 focus:border-orange-500 outline-none"
+                  className="w-full bg-white/5 text-white border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500/50 transition-all placeholder:text-gray-600"
                 />
+              </div>
+
+              <button
+                type="submit"
+                disabled={recordingPayment || !paymentPlayerId || !paymentAmount}
+                className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-3 rounded-xl transition-all"
+              >
+                {recordingPayment ? (
+                  <Loader2 className="animate-spin" size={18} />
+                ) : (
+                  <DollarSign size={18} />
+                )}
+                Record Payment
+              </button>
             </form>
           </div>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-800">
-            <thead className="bg-gray-800">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Group</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Role</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Balance</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-800">
-              {players.map(player => (
-                <tr key={player.id} className="hover:bg-gray-800/50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                    {player.group_id}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">
-                    {player.name}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                    {player.role}
-                  </td>
-                  <td className={`px-6 py-4 whitespace-nowrap text-sm font-bold
-                      ${parseFloat(player.balance) > 0 ? 'text-green-400' :
-                        parseFloat(player.balance) < 0 ? 'text-red-400' : 'text-gray-400'}`}>
-                    {player.balance}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button
-                      onClick={() => deletePlayer(player.id)}
-                      className="text-red-400 hover:text-red-300"
+        {/* Players List */}
+        <div className="bg-white/[0.02] border border-white/10 rounded-2xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Users className="text-orange-500" size={20} />
+              <h2 className="text-lg font-semibold text-white">All Players</h2>
+              <span className="px-2 py-0.5 rounded-full bg-white/5 text-gray-500 text-xs">
+                {players.length} total
+              </span>
+            </div>
+          </div>
+
+          <div className="divide-y divide-white/5">
+            {Object.entries(groupedPlayers)
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([groupName, groupPlayers]) => (
+                <div key={groupName}>
+                  <div className="px-6 py-2 bg-white/[0.02] text-xs text-gray-500 uppercase tracking-wider">
+                    {groupName}
+                  </div>
+                  {groupPlayers.map(player => (
+                    <div
+                      key={player.id}
+                      className="px-6 py-4 flex items-center justify-between hover:bg-white/[0.02] transition-colors"
                     >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center text-sm font-bold text-white border border-white/10">
+                          {player.name.substring(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="font-medium text-white">{player.name}</div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span
+                              className={`flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-xs font-medium border ${getRoleBadge(
+                                player.role
+                              )}`}
+                            >
+                              {getRoleIcon(player.role)}
+                              {player.role}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <div className="text-xs text-gray-500">Balance</div>
+                          <div
+                            className={`text-lg font-bold ${
+                              player.balance > 0
+                                ? 'text-green-400'
+                                : player.balance < 0
+                                ? 'text-red-400'
+                                : 'text-gray-500'
+                            }`}
+                          >
+                            {player.balance >= 0 ? '+' : ''}
+                            {player.balance.toFixed(0)}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => deletePlayer(player.id, player.name)}
+                          className="p-2 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               ))}
-            </tbody>
-          </table>
+          </div>
+
+          {players.length === 0 && (
+            <div className="text-center py-12">
+              <Users className="mx-auto text-gray-600 mb-3" size={40} />
+              <p className="text-gray-500">No players registered yet</p>
+              <p className="text-gray-600 text-sm">Add your first player above</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

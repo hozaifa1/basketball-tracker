@@ -1,2 +1,2 @@
-// Use relative path for Vercel (same domain) or localhost for dev
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
+// API base URL - uses Next.js API routes
+export const API_BASE_URL = '/api';
