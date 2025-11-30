@@ -16,8 +16,9 @@ export async function GET(
     if (error) throw error;
     
     return NextResponse.json(data);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -44,8 +45,9 @@ export async function PUT(
     if (error) throw error;
     
     return NextResponse.json(data);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -63,7 +65,8 @@ export async function DELETE(
     if (error) throw error;
     
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

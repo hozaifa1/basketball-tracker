@@ -17,14 +17,35 @@ export default function Home() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchPlayers = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/players/`);
       const data = await res.json();
-      setPlayers(data);
+
+      if (!res.ok) {
+        const message = (data && typeof data === 'object' && 'error' in data)
+          ? (data.error as string)
+          : 'Failed to load players from server.';
+        console.error('Error fetching players:', message);
+        setError(message);
+        setPlayers([]);
+        return;
+      }
+
+      if (!Array.isArray(data)) {
+        console.error('Unexpected /players response shape:', data);
+        setError('Unexpected response from server while loading players.');
+        setPlayers([]);
+        return;
+      }
+
+      setError(null);
+      setPlayers(data as Player[]);
     } catch (err) {
       console.error(err);
+      setError('Unable to reach the server. Please check your Supabase setup or network connection.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -42,7 +63,8 @@ export default function Home() {
 
   // Group players
   const groups: Record<string, Player[]> = {};
-  players.forEach((p) => {
+  const safePlayers = Array.isArray(players) ? players : [];
+  safePlayers.forEach((p) => {
     const key = p.group_id ? `Group ${p.group_id}` : 'No Group';
     if (!groups[key]) groups[key] = [];
     groups[key].push(p);
@@ -63,6 +85,24 @@ export default function Home() {
         <Navbar />
         <div className="flex items-center justify-center h-[80vh]">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-orange-500"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] text-white">
+        <Navbar />
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pt-16">
+          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-6">
+            <h1 className="text-xl font-semibold text-red-300 mb-2">Unable to load players</h1>
+            <p className="text-sm text-red-200 mb-4">{error}</p>
+            <p className="text-xs text-red-200/70">
+              Make sure your Supabase tables are created (see <code>supabase-schema.sql</code>) and
+              environment variables <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> are set correctly on Vercel / locally.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -182,13 +222,11 @@ function StatCard({
   icon,
   label,
   value,
-  trend,
   color,
 }: {
   icon: React.ReactNode;
   label: string;
   value: number;
-  trend: 'up' | 'down';
   color: 'blue' | 'green' | 'red';
 }) {
   const colorClasses = {

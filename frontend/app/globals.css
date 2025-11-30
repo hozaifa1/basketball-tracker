@@ -82,6 +82,28 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+/* Admin select */
+.admin-select {
+  background-color: rgba(15, 23, 42, 0.9);
+  color: hsl(var(--foreground));
+  border-radius: 0.75rem;
+  border-width: 1px;
+  border-color: rgba(148, 163, 184, 0.5);
+  padding: 0.75rem 1rem;
+  outline: none;
+}
+
+.admin-select:focus {
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 1px hsl(var(--primary) / 0.5);
+}
+
+.admin-select option,
+.admin-select optgroup {
+  color: #020617;
+  background-color: #f9fafb;
+}
+
 /* Status colors */
 .status-on-time { color: #22c55e; }
 .status-late { color: #eab308; }

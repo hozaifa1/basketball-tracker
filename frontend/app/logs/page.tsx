@@ -1,11 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ElementType } from 'react';
 import Navbar from '@/components/Navbar';
 import { API_BASE_URL } from '@/config';
 import { format } from 'date-fns';
 import {
-  Lock,
   Calendar,
   Wifi,
   WifiOff,
@@ -43,7 +42,7 @@ type Session = {
   attendances: Attendance[];
 };
 
-const STATUS_CONFIG: Record<string, { icon: any; color: string; bg: string }> = {
+const STATUS_CONFIG: Record<string, { icon: ElementType; color: string; bg: string }> = {
   'On Time': { icon: CheckCircle2, color: 'text-green-400', bg: 'bg-green-500/10' },
   'Late': { icon: Clock, color: 'text-yellow-400', bg: 'bg-yellow-500/10' },
   'Absent Informed': { icon: AlertCircle, color: 'text-orange-400', bg: 'bg-orange-500/10' },
@@ -63,10 +62,8 @@ export default function LogsPage() {
     if (sessionStorage.getItem('auth') === 'true') {
       setIsAuthenticated(true);
       setPassword(sessionStorage.getItem('pwd') || '');
-      fetchSessions();
-    } else {
-      setLoading(false);
     }
+    fetchSessions();
   }, []);
 
   const fetchSessions = async () => {
@@ -105,6 +102,7 @@ export default function LogsPage() {
   };
 
   const deleteSession = async (id: string) => {
+    if (!isAuthenticated) return;
     if (!confirm('Delete this attendance log? This will recalculate all balances.')) return;
     try {
       await fetch(`${API_BASE_URL}/sessions/${id}/`, { method: 'DELETE' });
@@ -115,6 +113,7 @@ export default function LogsPage() {
   };
 
   const toggleSettle = async (id: string) => {
+    if (!isAuthenticated) return;
     try {
       await fetch(`${API_BASE_URL}/sessions/${id}/settle/`, { method: 'POST' });
       fetchSessions();
@@ -140,6 +139,7 @@ export default function LogsPage() {
   };
 
   const saveEdit = async () => {
+    if (!isAuthenticated) return;
     if (!editingSessionId) return;
     const session = sessions.find(s => s.id === editingSessionId);
     if (!session) return;
@@ -171,44 +171,38 @@ export default function LogsPage() {
   };
 
   // Login Screen
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-orange-500/20">
-              <Lock className="text-white" size={28} />
-            </div>
-            <h1 className="text-2xl font-bold text-white mb-2">View Attendance History</h1>
-            <p className="text-gray-500 text-sm">Enter password to access logs</p>
-          </div>
-
-          <form onSubmit={handleLogin} className="bg-white/[0.02] border border-white/10 rounded-2xl p-6">
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="Enter password..."
-              className="w-full bg-white/5 text-white border border-white/10 rounded-xl px-4 py-3 mb-4 focus:outline-none focus:border-orange-500/50 transition-all placeholder:text-gray-600"
-              autoFocus
-            />
-            {loginError && (
-              <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-center gap-2">
-                <AlertCircle size={16} />
-                {loginError}
-              </div>
-            )}
-            <button
-              type="submit"
-              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold py-3 rounded-xl transition-all shadow-lg shadow-orange-500/20"
-            >
-              Unlock History
-            </button>
-          </form>
+  const loginControls = (
+    <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+      {!isAuthenticated && (
+        <form
+          onSubmit={handleLogin}
+          className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center"
+        >
+          <input
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="Admin password"
+            className="bg-white/5 text-white border border-white/10 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-orange-500/50 placeholder:text-gray-600"
+          />
+          <button
+            type="submit"
+            className="px-3 py-2 rounded-xl bg-orange-500/80 hover:bg-orange-600 text-xs font-semibold text-white whitespace-nowrap"
+          >
+            Unlock edit
+          </button>
+          {loginError && (
+            <span className="text-[11px] text-red-400 sm:ml-2">{loginError}</span>
+          )}
+        </form>
+      )}
+      {isAuthenticated && (
+        <div className="px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/30 text-[11px] text-green-400 font-medium">
+          Admin mode: editing enabled
         </div>
-      </div>
-    );
-  }
+      )}
+    </div>
+  );
 
   if (loading) {
     return (
@@ -227,25 +221,28 @@ export default function LogsPage() {
 
       <div className="max-w-6xl mx-auto py-8 px-4">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-col gap-4 mb-8 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h1 className="text-3xl font-black mb-2">
               <span className="bg-gradient-to-r from-orange-400 to-orange-600 bg-clip-text text-transparent">
                 Attendance History
               </span>
             </h1>
-            <p className="text-gray-500">View, edit, and manage past attendance logs</p>
+            <p className="text-gray-500">View all past attendance logs. Admins can edit with a password.</p>
           </div>
-          <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10">
-            <History className="text-orange-500" size={18} />
-            <span className="text-gray-400">{sessions.length} sessions</span>
+          <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-end">
+            <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10">
+              <History className="text-orange-500" size={18} />
+              <span className="text-gray-400">{sessions.length} sessions</span>
+            </div>
+            {loginControls}
           </div>
         </div>
 
         {/* Sessions List */}
         <div className="space-y-4">
           {sessions.map(session => {
-            const isEditing = editingSessionId === session.id;
+            const isEditing = isAuthenticated && editingSessionId === session.id;
             const dateObj = new Date(session.date);
             const formattedDate = format(dateObj, 'EEEE, MMMM d, yyyy');
 
@@ -282,68 +279,82 @@ export default function LogsPage() {
                           {session.is_online ? <Wifi size={12} /> : <WifiOff size={12} />}
                           {session.is_online ? 'Online' : 'Offline'}
                         </span>
-                        <button
-                          onClick={() => toggleSettle(session.id)}
-                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
-                            session.is_settled
-                              ? 'bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20'
-                              : 'bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20'
-                          }`}
-                        >
-                          {session.is_settled ? (
-                            <>
-                              <CheckCircle size={12} />
-                              Settled
-                            </>
-                          ) : (
-                            <>
-                              <AlertTriangle size={12} />
-                              Unsettled
-                            </>
-                          )}
-                        </button>
+                        {isAuthenticated ? (
+                          <button
+                            onClick={() => toggleSettle(session.id)}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                              session.is_settled
+                                ? 'bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20'
+                                : 'bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20'
+                            }`}
+                          >
+                            {session.is_settled ? (
+                              <>
+                                <CheckCircle size={12} />
+                                Settled
+                              </>
+                            ) : (
+                              <>
+                                <AlertTriangle size={12} />
+                                Unsettled
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <span
+                            className={`px-2.5 py-1 rounded-lg text-xs font-medium border ${
+                              session.is_settled
+                                ? 'bg-green-500/5 text-green-400 border-green-500/20'
+                                : 'bg-red-500/5 text-red-400 border-red-500/20'
+                            }`}
+                          >
+                            {session.is_settled ? 'Settled' : 'Unsettled'}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex items-center gap-2">
-                    {isEditing ? (
-                      <>
-                        <button
-                          onClick={saveEdit}
-                          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20 transition-all text-sm font-medium"
-                        >
-                          <Save size={16} />
-                          Save
-                        </button>
-                        <button
-                          onClick={cancelEdit}
-                          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10 transition-all text-sm font-medium"
-                        >
-                          <X size={16} />
-                          Cancel
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => startEdit(session)}
-                          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-all text-sm font-medium"
-                        >
-                          <Edit3 size={16} />
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => deleteSession(session.id)}
-                          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all text-sm font-medium"
-                        >
-                          <Trash2 size={16} />
-                          Delete
-                        </button>
-                      </>
-                    )}
-                  </div>
+                  {isAuthenticated && (
+                    <div className="flex items-center gap-2">
+                      {isEditing ? (
+                        <>
+                          <button
+                            onClick={saveEdit}
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20 transition-all text-sm font-medium"
+                          >
+                            <Save size={16} />
+                            Save
+                          </button>
+                          <button
+                            onClick={cancelEdit}
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10 transition-all text-sm font-medium"
+                          >
+                            <X size={16} />
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => startEdit(session)}
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-all text-sm font-medium"
+                          >
+                            <Edit3 size={16} />
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => deleteSession(session.id)}
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all text-sm font-medium"
+                          >
+                            <Trash2 size={16} />
+                            Delete
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Attendance Grid */}
@@ -381,6 +392,7 @@ export default function LogsPage() {
                                   <select
                                     value={att.status}
                                     onChange={e => updateAttendanceStatus(att.player_id, e.target.value)}
+                                    aria-label={`Change status for ${att.player?.name ?? 'player'}`}
                                     className="bg-white/5 text-white border border-white/10 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-orange-500/50"
                                   >
                                     {Object.keys(STATUS_CONFIG).map(opt => (

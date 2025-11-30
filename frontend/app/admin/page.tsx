@@ -130,6 +130,46 @@ export default function AdminPage() {
     }
   };
 
+  const updatePlayer = async (id: string, updates: Partial<Player>) => {
+    const current = players.find(p => p.id === id);
+    if (!current) return;
+
+    const payload = {
+      name: updates.name ?? current.name,
+      role: updates.role ?? current.role,
+      group_id: updates.group_id !== undefined ? updates.group_id : current.group_id,
+      balance: updates.balance ?? current.balance,
+    };
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/players/${id}/`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setPlayers(prev => prev.map(p => (p.id === id ? updated : p)));
+      } else {
+        alert('Failed to update player');
+      }
+    } catch {
+      alert('Error updating player');
+    }
+  };
+
+  const handleGroupUpdate = (id: string, value: string) => {
+    const trimmed = value.trim();
+    if (trimmed === '') {
+      updatePlayer(id, { group_id: null });
+      return;
+    }
+    const num = parseInt(trimmed, 10);
+    if (!Number.isNaN(num)) {
+      updatePlayer(id, { group_id: num });
+    }
+  };
+
   const addPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!paymentPlayerId || !paymentAmount) return;
@@ -292,7 +332,8 @@ export default function AdminPage() {
                   <select
                     value={role}
                     onChange={e => setRole(e.target.value)}
-                    className="w-full bg-white/5 text-white border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500/50 transition-all"
+                    aria-label="New player role"
+                    className="admin-select w-full bg-white/5 text-white border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500/50 transition-all"
                   >
                     <option value="Member">Member</option>
                     <option value="Leader">Leader</option>
@@ -344,7 +385,8 @@ export default function AdminPage() {
                 <select
                   value={paymentPlayerId}
                   onChange={e => setPaymentPlayerId(e.target.value)}
-                  className="w-full bg-white/5 text-white border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500/50 transition-all"
+                  aria-label="Select player for payment"
+                  className="admin-select w-full bg-white/5 text-white border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500/50 transition-all"
                   required
                 >
                   <option value="">Choose a player...</option>
@@ -436,7 +478,7 @@ export default function AdminPage() {
                         </div>
                         <div>
                           <div className="font-medium text-white">{player.name}</div>
-                          <div className="flex items-center gap-2 mt-1">
+                          <div className="flex flex-wrap items-center gap-2 mt-1">
                             <span
                               className={`flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-xs font-medium border ${getRoleBadge(
                                 player.role
@@ -445,6 +487,29 @@ export default function AdminPage() {
                               {getRoleIcon(player.role)}
                               {player.role}
                             </span>
+                            <span className="text-xs text-gray-500">
+                              Group {player.group_id ?? ''}
+                            </span>
+                          </div>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <select
+                              value={player.role}
+                              onChange={e => updatePlayer(player.id, { role: e.target.value })}
+                              aria-label={`Change role for ${player.name}`}
+                              className="admin-select bg-white/5 text-xs border-white/10 px-2 py-1 h-8"
+                            >
+                              <option value="Member">Member</option>
+                              <option value="Leader">Leader</option>
+                              <option value="Treasurer">Treasurer</option>
+                            </select>
+                            <input
+                              key={`${player.id}-${player.group_id ?? 'none'}`}
+                              type="number"
+                              defaultValue={player.group_id ?? ''}
+                              onBlur={e => handleGroupUpdate(player.id, e.target.value)}
+                              placeholder="Group #"
+                              className="w-20 bg-white/5 text-xs text-white border border-white/10 rounded-xl px-2 py-1 focus:outline-none focus:border-orange-500/50 transition-all placeholder:text-gray-600"
+                            />
                           </div>
                         </div>
                       </div>
@@ -467,6 +532,7 @@ export default function AdminPage() {
                         </div>
                         <button
                           onClick={() => deletePlayer(player.id, player.name)}
+                          aria-label={`Delete ${player.name}`}
                           className="p-2 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all"
                         >
                           <Trash2 size={16} />

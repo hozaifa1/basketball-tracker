@@ -1,0 +1,26 @@
+-- Create Players Table
+create table players (
+  id bigint primary key generated always as identity,
+  name text not null,
+  "group" text not null, -- "group" is a reserved word, so quotes needed
+  is_leader boolean default false,
+  total_balance int default 0,
+  akib_balance int default 0
+);
+
+-- Create Attendance Logs Table
+create table attendance (
+  id bigint primary key generated always as identity,
+  date date not null,
+  player_name text not null,
+  status text not null, -- 'On Time', 'Late', 'Absent-Informed', 'Absent-Uninformed'
+  created_at timestamptz default now()
+);
+
+-- Insert your team (Initial Data)
+insert into players (name, "group", is_leader) values
+('Piash', 'Group 1', true), ('Aryan', 'Group 1', false), ('Hozaifa', 'Group 1', false), ('Aftab', 'Group 1', false),
+('Shovon', 'Group 2', false), ('Taukir', 'Group 2', true), ('Sahil', 'Group 2', false), ('Sinan', 'Group 2', false),
+('Galib', 'Group 3', false), ('Dip', 'Group 3', false), ('Sagor', 'Group 3', false), ('Arman', 'Group 3', true),
+('Leyon', 'Group 4', true), ('Souvik', 'Group 4', false), ('Tonmoy', 'Group 4', false), ('Dristanto', 'Group 4', false),
+('Rashid', 'Group 5', false), ('Saad', 'Group 5', false), ('Prottoy', 'Group 5', true), ('Rifat', 'Group 5', false);

@@ -34,8 +34,9 @@ export async function POST(
       status: newStatus ? 'settled' : 'unsettled',
       is_settled: newStatus
     });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -80,7 +81,7 @@ async function recalculateAllBalances() {
       groupAttendances.get(groupId)!.push(att);
     }
     
-    for (const [groupId, groupAtts] of groupAttendances) {
+    for (const groupAtts of groupAttendances.values()) {
       const leaders = groupAtts
         .map(a => players.find(p => p.id === a.player_id))
         .filter(p => p && p.role === 'Leader');
