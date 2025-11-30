@@ -228,6 +228,7 @@ function StatCard({
   label: string;
   value: number;
   color: 'blue' | 'green' | 'red';
+  trend?: 'up' | 'down';
 }) {
   const colorClasses = {
     blue: 'from-blue-500/20 to-blue-500/5 border-blue-500/20',
