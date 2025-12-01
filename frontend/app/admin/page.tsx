@@ -94,9 +94,9 @@ export default function AdminPage() {
     e.preventDefault();
     setAddingPlayer(true);
     const payload = {
-      name,
+      name: name.trim(),
       role,
-      group_id: groupId ? parseInt(groupId) : null,
+      group_id: groupId ? parseInt(groupId, 10) : null,
     };
 
     try {
@@ -111,9 +111,17 @@ export default function AdminPage() {
         setRole('Member');
         fetchPlayers();
       } else {
-        alert('Failed to add player');
+        let message = 'Failed to add player';
+        try {
+          const data = await res.json();
+          if (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string') {
+            message = data.error;
+          }
+        } catch {}
+        alert(message);
       }
-    } catch {
+    } catch (err) {
+      console.error(err);
       alert('Error adding player');
     } finally {
       setAddingPlayer(false);
@@ -198,6 +206,47 @@ export default function AdminPage() {
       }
     } catch {
       alert('Error recording payment');
+    } finally {
+      setRecordingPayment(false);
+    }
+  };
+
+  const resolveDue = async (player: Player) => {
+    const rawBalance = player.balance as unknown as number | string;
+    const numericBalance = typeof rawBalance === 'string' ? parseFloat(rawBalance) : rawBalance;
+    if (!numericBalance || numericBalance >= 0) return;
+    const amount = Math.abs(numericBalance);
+    if (!window.confirm(`Resolve due for ${player.name} by recording a payment of ${amount.toFixed(0)} BDT?`)) {
+      return;
+    }
+
+    setRecordingPayment(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/payments/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          player_id: player.id,
+          amount,
+          notes: 'Due resolved from Admin Panel',
+        }),
+      });
+      if (res.ok) {
+        alert('Due resolved successfully!');
+        fetchPlayers();
+      } else {
+        let message = 'Failed to resolve due';
+        try {
+          const data = await res.json();
+          if (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string') {
+            message = data.error;
+          }
+        } catch {}
+        alert(message);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error resolving due');
     } finally {
       setRecordingPayment(false);
     }
@@ -529,6 +578,15 @@ export default function AdminPage() {
                             {player.balance >= 0 ? '+' : ''}
                             {player.balance.toFixed(0)}
                           </div>
+                          {player.balance < 0 && (
+                            <button
+                              onClick={() => resolveDue(player)}
+                              className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/10 text-green-400 border border-green-500/20 text-xs font-medium hover:bg-green-500/20 transition-all"
+                            >
+                              <DollarSign size={14} />
+                              Resolve Due
+                            </button>
+                          )}
                         </div>
                         <button
                           onClick={() => deletePlayer(player.id, player.name)}
