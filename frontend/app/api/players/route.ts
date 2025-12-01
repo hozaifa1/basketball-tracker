@@ -40,11 +40,23 @@ export async function POST(request: NextRequest) {
         ? rawRole
         : 'Member';
 
-    const insertPayload = {
+    type PlayerInsertPayload = {
+      name: string;
+      role: 'Member' | 'Leader' | 'Treasurer';
+      group_id?: number | null;
+      // Support legacy schemas that still have a `group` column
+      group?: number | null;
+    };
+
+    const insertPayload: PlayerInsertPayload = {
       name: rawName,
       role,
-      group_id,
     };
+
+    if (group_id !== null) {
+      insertPayload.group_id = group_id;
+      insertPayload.group = group_id;
+    }
 
     const { data, error } = await supabase
       .from('players')
