@@ -274,10 +274,10 @@ function PlayerCard({ player }: { player: Player }) {
   const roleColor = roleColors[player.role as keyof typeof roleColors] || roleColors.Member;
 
   return (
-    <div className="group relative rounded-2xl bg-white/[0.02] border border-white/5 p-5 hover:bg-white/[0.04] hover:border-orange-500/20 transition-all duration-300 card-hover">
-      <div className="flex items-start justify-between mb-4">
+    <div className="group relative rounded-xl sm:rounded-2xl bg-white/[0.02] border border-white/5 p-4 sm:p-5 hover:bg-white/[0.04] hover:border-orange-500/20 transition-all duration-300 card-hover">
+      <div className="flex items-start justify-between mb-3 sm:mb-4">
         {/* Avatar */}
-        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center text-lg font-bold text-white border border-white/10">
+        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center text-base sm:text-lg font-bold text-white border border-white/10">
           {player.name.substring(0, 2).toUpperCase()}
         </div>
 
@@ -290,24 +290,24 @@ function PlayerCard({ player }: { player: Player }) {
       </div>
 
       {/* Name */}
-      <h3 className="text-lg font-semibold text-white mb-1 truncate group-hover:text-orange-400 transition-colors">
+      <h3 className="text-base sm:text-lg font-semibold text-white mb-1 truncate group-hover:text-orange-400 transition-colors">
         {player.name}
       </h3>
-      <p className="text-xs text-gray-600 mb-4">
+      <p className="text-[11px] sm:text-xs text-gray-600 mb-3 sm:mb-4">
         {player.group_id ? `Group ${player.group_id}` : 'No Group'}
       </p>
 
       {/* Balance Section */}
-      <div className="pt-4 border-t border-white/5">
+      <div className="pt-3 sm:pt-4 border-t border-white/5">
         <div className="flex items-center justify-between">
-          <span className="text-xs text-gray-500 uppercase tracking-wider">Balance</span>
-          <div className="flex items-center gap-2">
+          <span className="text-[11px] sm:text-xs text-gray-500 uppercase tracking-wider">Balance</span>
+          <div className="flex items-center gap-1.5 sm:gap-2">
             {isNegative && (
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+              <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-red-500 animate-pulse"></span>
             )}
-            {isPositive && <span className="w-2 h-2 rounded-full bg-green-500"></span>}
+            {isPositive && <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-green-500"></span>}
             <span
-              className={`text-xl font-black ${
+              className={`text-lg sm:text-xl font-black ${
                 isPositive ? 'text-green-400' : isNegative ? 'text-red-400' : 'text-gray-500'
               }`}
             >
@@ -318,7 +318,7 @@ function PlayerCard({ player }: { player: Player }) {
         </div>
 
         {/* Status */}
-        <div className="mt-2 text-right">
+        <div className="mt-1.5 sm:mt-2 text-right">
           {isNegative && (
             <span className="text-[10px] text-red-400/80 font-medium">Payment Due</span>
           )}
