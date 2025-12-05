@@ -44,6 +44,7 @@ export default function AdminPage() {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [recordingPayment, setRecordingPayment] = useState(false);
+  const [paymentDirection, setPaymentDirection] = useState<'player_to_treasurer' | 'treasurer_to_player'>('player_to_treasurer');
 
   useEffect(() => {
     if (sessionStorage.getItem('auth') === 'true') {
@@ -183,9 +184,12 @@ export default function AdminPage() {
     if (!paymentPlayerId || !paymentAmount) return;
 
     setRecordingPayment(true);
+    const baseAmount = Math.abs(parseFloat(paymentAmount));
+    const signedAmount =
+      paymentDirection === 'player_to_treasurer' ? baseAmount : -baseAmount;
     const payload = {
       player_id: paymentPlayerId,
-      amount: parseFloat(paymentAmount),
+      amount: signedAmount,
       notes: paymentNotes || null,
     };
 
@@ -498,6 +502,26 @@ export default function AdminPage() {
               </div>
 
               <div>
+                <label className="block text-sm text-gray-400 mb-2">Who paid who?</label>
+                <select
+                  value={paymentDirection}
+                  onChange={e =>
+                    setPaymentDirection(
+                      e.target.value === 'treasurer_to_player'
+                        ? 'treasurer_to_player'
+                        : 'player_to_treasurer'
+                    )
+                  }
+                  aria-label="Select payment direction"
+                  className="admin-select w-full bg-white/5 text-white border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500/50 transition-all"
+                  required
+                >
+                  <option value="player_to_treasurer">Player paid Treasurer</option>
+                  <option value="treasurer_to_player">Treasurer paid Player</option>
+                </select>
+              </div>
+
+              <div>
                 <label className="block text-sm text-gray-400 mb-2">Amount (BDT)</label>
                 <input
                   type="number"
@@ -628,7 +652,7 @@ export default function AdminPage() {
                               Resolve Due
                             </button>
                           )}
-                          {player.balance > 0 && (
+                          {player.balance > 0 && player.role !== 'Treasurer' && (
                             <button
                               onClick={() => resolveCredit(player)}
                               className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs font-medium hover:bg-blue-500/20 transition-all"

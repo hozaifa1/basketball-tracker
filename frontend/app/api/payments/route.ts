@@ -146,8 +146,19 @@ async function recalculateAllBalances() {
   
   const { data: payments } = await supabase.from('payments').select('*');
   if (payments) {
-    for (const payment of payments) {
-      balances.set(payment.player_id, (balances.get(payment.player_id) || 0) + payment.amount);
+    if (treasurer) {
+      for (const payment of payments) {
+        const playerId = payment.player_id as string;
+        const amount = Number(payment.amount) || 0;
+        balances.set(playerId, (balances.get(playerId) || 0) + amount);
+        balances.set(treasurer.id, (balances.get(treasurer.id) || 0) - amount);
+      }
+    } else {
+      for (const payment of payments) {
+        const playerId = payment.player_id as string;
+        const amount = Number(payment.amount) || 0;
+        balances.set(playerId, (balances.get(playerId) || 0) + amount);
+      }
     }
   }
   

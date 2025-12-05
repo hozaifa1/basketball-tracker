@@ -119,15 +119,12 @@ export async function POST(request: NextRequest) {
 }
 
 async function recalculateAllBalances() {
-  // Get all players
   const { data: players } = await supabase.from('players').select('*');
   if (!players) return;
   
-  // Initialize balances
   const balances = new Map<string, number>();
   players.forEach(p => balances.set(p.id, 0));
   
-  // Find treasurer
   const treasurer = players.find(p => p.role === 'Treasurer');
   
   // Get all sessions with attendances
@@ -223,15 +220,24 @@ async function recalculateAllBalances() {
     }
   }
   
-  // Add payments
   const { data: payments } = await supabase.from('payments').select('*');
   if (payments) {
-    for (const payment of payments) {
-      balances.set(payment.player_id, (balances.get(payment.player_id) || 0) + payment.amount);
+    if (treasurer) {
+      for (const payment of payments) {
+        const playerId = payment.player_id as string;
+        const amount = Number(payment.amount) || 0;
+        balances.set(playerId, (balances.get(playerId) || 0) + amount);
+        balances.set(treasurer.id, (balances.get(treasurer.id) || 0) - amount);
+      }
+    } else {
+      for (const payment of payments) {
+        const playerId = payment.player_id as string;
+        const amount = Number(payment.amount) || 0;
+        balances.set(playerId, (balances.get(playerId) || 0) + amount);
+      }
     }
   }
   
-  // Update all player balances
   for (const [playerId, balance] of balances) {
     await supabase
       .from('players')
