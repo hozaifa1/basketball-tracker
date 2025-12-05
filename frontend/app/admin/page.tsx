@@ -705,20 +705,36 @@ export default function AdminPage() {
                   <div className="text-xs text-gray-400">Treasurer Wallet</div>
                 </div>
               </div>
-              <div className="text-right">
-                <div className="text-xs text-gray-500">Treasurer Balance</div>
-                <div
-                  className={`text-lg font-bold ${
-                    treasurerPlayer.balance > 0
-                      ? 'text-green-400'
-                      : treasurerPlayer.balance < 0
-                      ? 'text-red-400'
-                      : 'text-gray-500'
-                  }`}
-                >
-                  {treasurerPlayer.balance >= 0 ? '+' : ''}
-                  {treasurerPlayer.balance.toFixed(0)}
+              <div className="flex items-center gap-4">
+                <div className="text-right">
+                  <div className="text-xs text-gray-500">Treasurer Balance</div>
+                  <div
+                    className={`text-lg font-bold ${
+                      treasurerPlayer.balance > 0
+                        ? 'text-green-400'
+                        : treasurerPlayer.balance < 0
+                        ? 'text-red-400'
+                        : 'text-gray-500'
+                    }`}
+                  >
+                    {treasurerPlayer.balance >= 0 ? '+' : ''}
+                    {treasurerPlayer.balance.toFixed(0)}
+                  </div>
                 </div>
+                <button
+                  onClick={() => handleEditBalance(treasurerPlayer)}
+                  aria-label={`Edit balance for ${treasurerPlayer.name}`}
+                  className="p-2 rounded-lg bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-all text-xs"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => deletePlayer(treasurerPlayer.id, treasurerPlayer.name)}
+                  aria-label={`Delete ${treasurerPlayer.name}`}
+                  className="p-2 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all"
+                >
+                  <Trash2 size={16} />
+                </button>
               </div>
             </div>
           )}
