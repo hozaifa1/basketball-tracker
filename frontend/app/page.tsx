@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Navbar from '../components/Navbar';
 import { API_BASE_URL } from '../config';
-import { TrendingUp, TrendingDown, Wallet, Users, ChevronRight, RefreshCw } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, Users, ChevronRight, RefreshCw, Clipboard } from 'lucide-react';
 
 type Player = {
   id: string;
@@ -80,6 +80,31 @@ export default function Home() {
     .filter(p => p.balance < 0)
     .reduce((sum, p) => sum + Math.abs(p.balance), 0);
   const netBalance = safePlayers.reduce((sum, p) => sum + p.balance, 0);
+
+  const handleCopyBalances = async () => {
+    try {
+      const lines: string[] = [];
+
+      Object.entries(groups)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .forEach(([groupName, groupPlayers]) => {
+          lines.push(groupName);
+          groupPlayers.forEach(player => {
+            const bal = player.balance;
+            const sign = bal >= 0 ? '+' : '';
+            lines.push(`${player.name} - ${sign}${bal.toFixed(0)} BDT`);
+          });
+          lines.push('');
+        });
+
+      const text = lines.join('\n').trim();
+      await navigator.clipboard.writeText(text);
+      alert('Balances copied to clipboard');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to copy balances');
+    }
+  };
 
   if (loading) {
     return (
@@ -181,6 +206,14 @@ export default function Home() {
             <span className="text-white font-semibold">{safePlayers.length}</span> players across{' '}
             <span className="text-white font-semibold">{Object.keys(groups).length}</span> groups
           </span>
+          <button
+            type="button"
+            onClick={handleCopyBalances}
+            className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-gray-300 transition-all"
+          >
+            <Clipboard size={14} />
+            Copy balances
+          </button>
         </div>
 
         {/* Player Groups */}

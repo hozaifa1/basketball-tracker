@@ -15,7 +15,8 @@ import {
   Wallet,
   User,
   Plus,
-  DollarSign
+  DollarSign,
+  Clipboard
 } from 'lucide-react';
 
 type Player = {
@@ -345,6 +346,39 @@ export default function AdminPage() {
     await updatePlayer(player.id, { balance: value });
   };
 
+  const handleCopyBalances = async () => {
+    try {
+      const lines: string[] = [];
+
+      if (treasurerPlayer) {
+        lines.push('Treasurer Wallet');
+        const bal = treasurerPlayer.balance;
+        const sign = bal >= 0 ? '+' : '';
+        lines.push(`${treasurerPlayer.name} - ${sign}${bal.toFixed(0)} BDT`);
+        lines.push('');
+      }
+
+      Object.entries(groupedPlayers)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .forEach(([groupName, groupPlayers]) => {
+          lines.push(groupName);
+          groupPlayers.forEach(player => {
+            const bal = player.balance;
+            const sign = bal >= 0 ? '+' : '';
+            lines.push(`${player.name} - ${sign}${bal.toFixed(0)} BDT`);
+          });
+          lines.push('');
+        });
+
+      const text = lines.join('\n').trim();
+      await navigator.clipboard.writeText(text);
+      alert('Balances copied to clipboard');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to copy balances');
+    }
+  };
+
   const getRoleIcon = (role: string) => {
     switch (role) {
       case 'Leader':
@@ -650,6 +684,14 @@ export default function AdminPage() {
                 {nonTreasurerPlayers.length} players
               </span>
             </div>
+            <button
+              type="button"
+              onClick={handleCopyBalances}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-gray-300 transition-all"
+            >
+              <Clipboard size={14} />
+              Copy balances
+            </button>
           </div>
 
           {treasurerPlayer && (

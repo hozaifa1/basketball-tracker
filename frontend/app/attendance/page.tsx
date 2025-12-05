@@ -15,7 +15,8 @@ import {
   ChevronDown,
   Send,
   Users,
-  Loader2
+  Loader2,
+  Clipboard
 } from 'lucide-react';
 
 type Player = {
@@ -139,6 +140,29 @@ export default function AttendancePage() {
 
   const getStatusInfo = (status: string) => {
     return STATUS_OPTIONS.find(s => s.value === status) || STATUS_OPTIONS[0];
+  };
+
+  const handleCopyAttendance = async () => {
+    try {
+      const lines: string[] = [];
+      Object.entries(groups)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .forEach(([groupName, groupPlayers]) => {
+          lines.push(groupName);
+          groupPlayers.forEach(player => {
+            const status = attendance[player.id] || 'On Time';
+            lines.push(`${player.name} - ${status}`);
+          });
+          lines.push('');
+        });
+
+      const text = lines.join('\n').trim();
+      await navigator.clipboard.writeText(text);
+      alert('Attendance copied to clipboard');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to copy attendance');
+    }
   };
 
   // Login Screen
@@ -276,17 +300,27 @@ export default function AttendancePage() {
         </div>
 
         {/* Quick Actions */}
-        <div className="flex flex-wrap gap-2 mb-6">
-          <span className="text-sm text-gray-500 mr-2 self-center">Quick set all:</span>
-          {STATUS_OPTIONS.map(status => (
-            <button
-              key={status.value}
-              onClick={() => setAllStatus(status.value)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all hover:scale-105 ${status.bg} ${status.color}`}
-            >
-              {status.label}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+          <div className="flex flex-wrap gap-2">
+            <span className="text-sm text-gray-500 mr-2 self-center">Quick set all:</span>
+            {STATUS_OPTIONS.map(status => (
+              <button
+                key={status.value}
+                onClick={() => setAllStatus(status.value)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all hover:scale-105 ${status.bg} ${status.color}`}
+              >
+                {status.label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={handleCopyAttendance}
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-gray-300 transition-all"
+          >
+            <Clipboard size={14} />
+            Copy attendance
+          </button>
         </div>
 
         {/* Progress Bar */}
