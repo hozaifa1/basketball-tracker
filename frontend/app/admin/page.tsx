@@ -418,9 +418,12 @@ export default function AdminPage() {
     );
   }
 
-  // Group players by group_id
+  const treasurerPlayer = players.find(p => p.role === 'Treasurer') || null;
+  const nonTreasurerPlayers = players.filter(p => p.role !== 'Treasurer');
+
+  // Group non-treasurer players by group_id
   const groupedPlayers: Record<string, Player[]> = {};
-  players.forEach(p => {
+  nonTreasurerPlayers.forEach(p => {
     const key = p.group_id ? `Group ${p.group_id}` : 'No Group';
     if (!groupedPlayers[key]) groupedPlayers[key] = [];
     groupedPlayers[key].push(p);
@@ -537,7 +540,7 @@ export default function AdminPage() {
                   required
                 >
                   <option value="">Choose a player...</option>
-                  {players
+                  {nonTreasurerPlayers
                     .filter(p => p.balance < 0)
                     .map(p => (
                       <option key={p.id} value={p.id}>
@@ -545,7 +548,7 @@ export default function AdminPage() {
                       </option>
                     ))}
                   <optgroup label="All Players">
-                    {players.map(p => (
+                    {nonTreasurerPlayers.map(p => (
                       <option key={p.id} value={p.id}>
                         {p.name} (Balance: {p.balance.toFixed(0)} BDT)
                       </option>
@@ -644,10 +647,39 @@ export default function AdminPage() {
               <Users className="text-orange-500" size={20} />
               <h2 className="text-lg font-semibold text-white">All Players</h2>
               <span className="px-2 py-0.5 rounded-full bg-white/5 text-gray-500 text-xs">
-                {players.length} total
+                {nonTreasurerPlayers.length} players
               </span>
             </div>
           </div>
+
+          {treasurerPlayer && (
+            <div className="px-6 py-4 border-b border-purple-500/30 bg-purple-500/5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-purple-800 flex items-center justify-center text-sm font-bold text-white border border-purple-400/40">
+                  TR
+                </div>
+                <div>
+                  <div className="font-medium text-white">{treasurerPlayer.name}</div>
+                  <div className="text-xs text-gray-400">Treasurer Wallet</div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-gray-500">Treasurer Balance</div>
+                <div
+                  className={`text-lg font-bold ${
+                    treasurerPlayer.balance > 0
+                      ? 'text-green-400'
+                      : treasurerPlayer.balance < 0
+                      ? 'text-red-400'
+                      : 'text-gray-500'
+                  }`}
+                >
+                  {treasurerPlayer.balance >= 0 ? '+' : ''}
+                  {treasurerPlayer.balance.toFixed(0)}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="divide-y divide-white/5">
             {Object.entries(groupedPlayers)
@@ -690,7 +722,6 @@ export default function AdminPage() {
                             >
                               <option value="Member">Member</option>
                               <option value="Leader">Leader</option>
-                              <option value="Treasurer">Treasurer</option>
                             </select>
                             <input
                               key={`${player.id}-${player.group_id ?? 'none'}`}

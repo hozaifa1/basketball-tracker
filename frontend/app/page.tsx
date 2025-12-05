@@ -61,23 +61,25 @@ export default function Home() {
     fetchPlayers();
   };
 
-  // Group players
+  const nonTreasurerPlayers = players.filter(p => p.role !== 'Treasurer');
+
+  // Group non-treasurer players
   const groups: Record<string, Player[]> = {};
-  const safePlayers = Array.isArray(players) ? players : [];
+  const safePlayers = Array.isArray(nonTreasurerPlayers) ? nonTreasurerPlayers : [];
   safePlayers.forEach((p) => {
     const key = p.group_id ? `Group ${p.group_id}` : 'No Group';
     if (!groups[key]) groups[key] = [];
     groups[key].push(p);
   });
 
-  // Calculate totals
-  const totalCollected = players
+  // Calculate totals over non-treasurer players
+  const totalCollected = safePlayers
     .filter(p => p.balance > 0)
     .reduce((sum, p) => sum + p.balance, 0);
-  const totalDue = players
+  const totalDue = safePlayers
     .filter(p => p.balance < 0)
     .reduce((sum, p) => sum + Math.abs(p.balance), 0);
-  const netBalance = players.reduce((sum, p) => sum + p.balance, 0);
+  const netBalance = safePlayers.reduce((sum, p) => sum + p.balance, 0);
 
   if (loading) {
     return (
@@ -176,7 +178,7 @@ export default function Home() {
         <div className="flex items-center gap-4 mb-8 p-4 rounded-2xl bg-white/[0.02] border border-white/5">
           <Users className="text-orange-500" size={20} />
           <span className="text-gray-400">
-            <span className="text-white font-semibold">{players.length}</span> players across{' '}
+            <span className="text-white font-semibold">{safePlayers.length}</span> players across{' '}
             <span className="text-white font-semibold">{Object.keys(groups).length}</span> groups
           </span>
         </div>

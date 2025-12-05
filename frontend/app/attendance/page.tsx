@@ -59,9 +59,10 @@ export default function AttendancePage() {
     try {
       const res = await fetch(`${API_BASE_URL}/players/`);
       const data = await res.json();
-      setPlayers(data);
+      const activePlayers = (data as Player[]).filter(p => p.role !== 'Treasurer');
+      setPlayers(activePlayers);
       const initial: Record<string, string> = {};
-      data.forEach((p: Player) => initial[p.id] = 'On Time');
+      activePlayers.forEach((p: Player) => initial[p.id] = 'On Time');
       setAttendance(initial);
       setLoading(false);
     } catch (err) {
