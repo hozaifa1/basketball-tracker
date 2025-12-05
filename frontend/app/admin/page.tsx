@@ -26,6 +26,8 @@ type Player = {
   balance: number;
 };
 
+type ResolutionType = 'cash' | 'suicide' | 'other';
+
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
@@ -45,12 +47,15 @@ export default function AdminPage() {
   const [paymentNotes, setPaymentNotes] = useState('');
   const [recordingPayment, setRecordingPayment] = useState(false);
   const [paymentDirection, setPaymentDirection] = useState<'player_to_treasurer' | 'treasurer_to_player'>('player_to_treasurer');
+  const [resolutionType, setResolutionType] = useState<ResolutionType>('cash');
+  const [suicideCount, setSuicideCount] = useState(0);
 
   useEffect(() => {
     if (sessionStorage.getItem('auth') === 'true') {
       setIsAuthenticated(true);
       setPassword(sessionStorage.getItem('pwd') || '');
       fetchPlayers();
+      fetchSuicideCount();
     } else {
       setLoading(false);
     }
@@ -65,6 +70,24 @@ export default function AdminPage() {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchSuicideCount = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/payments/`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        const count = data.filter((p: { notes?: string | null }) => {
+          const notes = typeof p.notes === 'string' ? p.notes : '';
+          return notes.startsWith('[RESOLUTION:SUICIDE]');
+        }).length;
+        setSuicideCount(count);
+      } else {
+        setSuicideCount(0);
+      }
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -187,10 +210,18 @@ export default function AdminPage() {
     const baseAmount = Math.abs(parseFloat(paymentAmount));
     const signedAmount =
       paymentDirection === 'player_to_treasurer' ? baseAmount : -baseAmount;
+    const resolutionPrefix =
+      resolutionType === 'suicide'
+        ? '[RESOLUTION:SUICIDE]'
+        : resolutionType === 'cash'
+        ? '[RESOLUTION:CASH]'
+        : '[RESOLUTION:OTHER]';
+    const extraNotes = paymentNotes.trim();
+    const combinedNotes = extraNotes ? `${resolutionPrefix} ${extraNotes}` : resolutionPrefix;
     const payload = {
       player_id: paymentPlayerId,
       amount: signedAmount,
-      notes: paymentNotes || null,
+      notes: combinedNotes,
     };
 
     try {
@@ -203,8 +234,10 @@ export default function AdminPage() {
         setPaymentPlayerId('');
         setPaymentAmount('');
         setPaymentNotes('');
+        setResolutionType('cash');
         alert('Payment recorded successfully!');
         fetchPlayers();
+        fetchSuicideCount();
       } else {
         alert('Failed to record payment');
       }
@@ -232,7 +265,7 @@ export default function AdminPage() {
         body: JSON.stringify({
           player_id: player.id,
           amount,
-          notes: 'Due resolved from Admin Panel',
+          notes: '[RESOLUTION:CASH] Due resolved from Admin Panel',
         }),
       });
       if (res.ok) {
@@ -273,7 +306,7 @@ export default function AdminPage() {
         body: JSON.stringify({
           player_id: player.id,
           amount: -amount,
-          notes: 'Credit resolved from Admin Panel',
+          notes: '[RESOLUTION:CASH] Credit resolved from Admin Panel',
         }),
       });
       if (res.ok) {
@@ -295,6 +328,21 @@ export default function AdminPage() {
     } finally {
       setRecordingPayment(false);
     }
+  };
+
+  const handleEditBalance = async (player: Player) => {
+    const current = typeof player.balance === 'number' ? player.balance : Number(player.balance) || 0;
+    const input = window.prompt(
+      `Set new balance for ${player.name} (current: ${current.toFixed(0)} BDT):`,
+      current.toString()
+    );
+    if (input === null) return;
+    const value = Number(input);
+    if (Number.isNaN(value)) {
+      alert('Invalid balance value');
+      return;
+    }
+    await updatePlayer(player.id, { balance: value });
   };
 
   const getRoleIcon = (role: string) => {
@@ -391,6 +439,11 @@ export default function AdminPage() {
             </span>
           </h1>
           <p className="text-gray-500">Manage players and record payments</p>
+          <div className="mt-2 inline-flex items-center gap-2 text-xs text-gray-400">
+            <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10">
+              Total suicides: {suicideCount}
+            </span>
+          </div>
         </div>
 
         {/* Action Cards */}
@@ -518,6 +571,29 @@ export default function AdminPage() {
                 >
                   <option value="player_to_treasurer">Player paid Treasurer</option>
                   <option value="treasurer_to_player">Treasurer paid Player</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Resolution type</label>
+                <select
+                  value={resolutionType}
+                  onChange={e =>
+                    setResolutionType(
+                      e.target.value === 'suicide'
+                        ? 'suicide'
+                        : e.target.value === 'other'
+                        ? 'other'
+                        : 'cash'
+                    )
+                  }
+                  aria-label="Select resolution type"
+                  className="admin-select w-full bg-white/5 text-white border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500/50 transition-all"
+                  required
+                >
+                  <option value="cash">Cash</option>
+                  <option value="suicide">Suicide</option>
+                  <option value="other">Other</option>
                 </select>
               </div>
 
@@ -662,6 +738,13 @@ export default function AdminPage() {
                             </button>
                           )}
                         </div>
+                        <button
+                          onClick={() => handleEditBalance(player)}
+                          aria-label={`Edit balance for ${player.name}`}
+                          className="p-2 rounded-lg bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-all text-xs"
+                        >
+                          Edit
+                        </button>
                         <button
                           onClick={() => deletePlayer(player.id, player.name)}
                           aria-label={`Delete ${player.name}`}
