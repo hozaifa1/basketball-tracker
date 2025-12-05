@@ -50,6 +50,9 @@ export default function AdminPage() {
   const [paymentDirection, setPaymentDirection] = useState<'player_to_treasurer' | 'treasurer_to_player'>('player_to_treasurer');
   const [resolutionType, setResolutionType] = useState<ResolutionType>('cash');
   const [suicideCount, setSuicideCount] = useState(0);
+  const [showAddPlayer, setShowAddPlayer] = useState(false);
+  const [showRecordPayment, setShowRecordPayment] = useState(false);
+  const [resettingFromAttendance, setResettingFromAttendance] = useState(false);
 
   useEffect(() => {
     if (sessionStorage.getItem('auth') === 'true') {
@@ -379,6 +382,42 @@ export default function AdminPage() {
     }
   };
 
+  const handleResetFromAttendance = async () => {
+    if (
+      !window.confirm(
+        'This will reset all player balances from attendance history only, ignoring payments and manual edits. Continue?'
+      )
+    ) {
+      return;
+    }
+
+    setResettingFromAttendance(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/reset-from-attendance/`, {
+        method: 'POST',
+      });
+
+      if (res.ok) {
+        alert('Balances have been reset from attendance history.');
+        fetchPlayers();
+      } else {
+        let message = 'Failed to reset balances from attendance';
+        try {
+          const data = await res.json();
+          if (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string') {
+            message = data.error;
+          }
+        } catch {}
+        alert(message);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error resetting balances from attendance');
+    } finally {
+      setResettingFromAttendance(false);
+    }
+  };
+
   const getRoleIcon = (role: string) => {
     switch (role) {
       case 'Leader':
@@ -487,83 +526,104 @@ export default function AdminPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           {/* Add Player Card */}
           <div className="bg-white/[0.02] border border-white/10 rounded-2xl p-6">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
-                <UserPlus className="text-orange-500" size={20} />
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
+                  <UserPlus className="text-orange-500" size={20} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-white">Add New Player</h2>
+                  <p className="text-xs text-gray-500">Register a new team member</p>
+                </div>
               </div>
-              <div>
-                <h2 className="text-lg font-semibold text-white">Add New Player</h2>
-                <p className="text-xs text-gray-500">Register a new team member</p>
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddPlayer(prev => !prev)}
+                className="text-xs px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 transition-all"
+              >
+                {showAddPlayer ? 'Hide' : 'Show'}
+              </button>
             </div>
 
-            <form onSubmit={addPlayer} className="space-y-4">
-              <div>
-                <label className="block text-sm text-gray-400 mb-2">Player Name</label>
-                <input
-                  type="text"
-                  placeholder="Enter player name..."
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  className="w-full bg-white/5 text-white border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500/50 transition-all placeholder:text-gray-600"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
+            {showAddPlayer && (
+              <form onSubmit={addPlayer} className="space-y-4">
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">Role</label>
-                  <select
-                    value={role}
-                    onChange={e => setRole(e.target.value)}
-                    aria-label="New player role"
-                    className="admin-select w-full bg-white/5 text-white border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500/50 transition-all"
-                  >
-                    <option value="Member">Member</option>
-                    <option value="Leader">Leader</option>
-                    <option value="Treasurer">Treasurer</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-400 mb-2">Group</label>
+                  <label className="block text-sm text-gray-400 mb-2">Player Name</label>
                   <input
-                    type="number"
-                    placeholder="Group #"
-                    value={groupId}
-                    onChange={e => setGroupId(e.target.value)}
+                    type="text"
+                    placeholder="Enter player name..."
+                    value={name}
+                    onChange={e => setName(e.target.value)}
                     className="w-full bg-white/5 text-white border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500/50 transition-all placeholder:text-gray-600"
+                    required
                   />
                 </div>
-              </div>
 
-              <button
-                type="submit"
-                disabled={addingPlayer || !name}
-                className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-3 rounded-xl transition-all"
-              >
-                {addingPlayer ? (
-                  <Loader2 className="animate-spin" size={18} />
-                ) : (
-                  <Plus size={18} />
-                )}
-                Add Player
-              </button>
-            </form>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-2">Role</label>
+                    <select
+                      value={role}
+                      onChange={e => setRole(e.target.value)}
+                      aria-label="New player role"
+                      className="admin-select w-full bg-white/5 text-white border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500/50 transition-all"
+                    >
+                      <option value="Member">Member</option>
+                      <option value="Leader">Leader</option>
+                      <option value="Treasurer">Treasurer</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-2">Group</label>
+                    <input
+                      type="number"
+                      placeholder="Group #"
+                      value={groupId}
+                      onChange={e => setGroupId(e.target.value)}
+                      className="w-full bg-white/5 text-white border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500/50 transition-all placeholder:text-gray-600"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={addingPlayer || !name}
+                  className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-3 rounded-xl transition-all"
+                >
+                  {addingPlayer ? (
+                    <Loader2 className="animate-spin" size={18} />
+                  ) : (
+                    <Plus size={18} />
+                  )}
+                  Add Player
+                </button>
+              </form>
+            )}
           </div>
 
           {/* Record Payment Card */}
           <div className="bg-white/[0.02] border border-white/10 rounded-2xl p-6">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center border border-green-500/20">
-                <CreditCard className="text-green-500" size={20} />
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center border border-green-500/20">
+                  <CreditCard className="text-green-500" size={20} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-white">Record Payment</h2>
+                  <p className="text-xs text-gray-500">Log a payment from a player</p>
+                </div>
               </div>
-              <div>
-                <h2 className="text-lg font-semibold text-white">Record Payment</h2>
-                <p className="text-xs text-gray-500">Log a payment from a player</p>
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowRecordPayment(prev => !prev)}
+                className="text-xs px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 transition-all"
+              >
+                {showRecordPayment ? 'Hide' : 'Show'}
+              </button>
             </div>
 
-            <form onSubmit={addPayment} className="space-y-4">
+            {showRecordPayment && (
+              <form onSubmit={addPayment} className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-400 mb-2">Select Player</label>
                 <select
@@ -671,6 +731,7 @@ export default function AdminPage() {
                 Record Payment
               </button>
             </form>
+            )}
           </div>
         </div>
 
@@ -684,14 +745,31 @@ export default function AdminPage() {
                 {nonTreasurerPlayers.length} players
               </span>
             </div>
-            <button
-              type="button"
-              onClick={handleCopyBalances}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-gray-300 transition-all"
-            >
-              <Clipboard size={14} />
-              Copy balances
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleResetFromAttendance}
+                disabled={resettingFromAttendance}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 disabled:opacity-60 border border-white/10 text-xs text-gray-300 transition-all"
+              >
+                {resettingFromAttendance ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Syncing
+                  </>
+                ) : (
+                  'Sync attendance'
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={handleCopyBalances}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-gray-300 transition-all"
+              >
+                <Clipboard size={14} />
+                Copy balances
+              </button>
+            </div>
           </div>
 
           {treasurerPlayer && (
