@@ -210,7 +210,7 @@ export default function AdminPage() {
       setRecordingPayment(false);
     }
   };
-
+ 
   const resolveDue = async (player: Player) => {
     const rawBalance = player.balance as unknown as number | string;
     const numericBalance = typeof rawBalance === 'string' ? parseFloat(rawBalance) : rawBalance;
@@ -247,6 +247,47 @@ export default function AdminPage() {
     } catch (err) {
       console.error(err);
       alert('Error resolving due');
+    } finally {
+      setRecordingPayment(false);
+    }
+  };
+
+  const resolveCredit = async (player: Player) => {
+    const rawBalance = player.balance as unknown as number | string;
+    const numericBalance = typeof rawBalance === 'string' ? parseFloat(rawBalance) : rawBalance;
+    if (!numericBalance || numericBalance <= 0) return;
+    const amount = Math.abs(numericBalance);
+    if (!window.confirm(`Resolve credit for ${player.name} by recording a payout of ${amount.toFixed(0)} BDT?`)) {
+      return;
+    }
+
+    setRecordingPayment(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/payments/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          player_id: player.id,
+          amount: -amount,
+          notes: 'Credit resolved from Admin Panel',
+        }),
+      });
+      if (res.ok) {
+        alert('Credit resolved successfully!');
+        fetchPlayers();
+      } else {
+        let message = 'Failed to resolve credit';
+        try {
+          const data = await res.json();
+          if (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string') {
+            message = data.error;
+          }
+        } catch {}
+        alert(message);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error resolving credit');
     } finally {
       setRecordingPayment(false);
     }
@@ -585,6 +626,15 @@ export default function AdminPage() {
                             >
                               <DollarSign size={14} />
                               Resolve Due
+                            </button>
+                          )}
+                          {player.balance > 0 && (
+                            <button
+                              onClick={() => resolveCredit(player)}
+                              className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs font-medium hover:bg-blue-500/20 transition-all"
+                            >
+                              <DollarSign size={14} />
+                              Resolve Credit
                             </button>
                           )}
                         </div>
